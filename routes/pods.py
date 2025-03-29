@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from models import data, Pod
+from models import data, Pod, Node
 
 pods_bp = Blueprint("pods", __name__)
 
@@ -16,11 +16,34 @@ def add_pod():
     elif not cpu_cores_req:
         return jsonify({"error": "cpu_cores_req is missing or incorrect"}), 400
 
-    new_pod = Pod(name=name, cpu_cores_req=cpu_cores_req)
+    # this finds a node with enough cores
+    node = Node.query.filter(
+        Node.cpu_cores_avail >= cpu_cores_req, Node.health_status == "healthy"
+    ).first()
+
+    if not node:
+        return (
+            jsonify({"error": "No available node found with enough CPU resources"}),
+            400,
+        )
+
+    # makes teh pod if node is found with enough cores
+    new_pod = Pod(
+        name=name, cpu_cores_req=cpu_cores_req, node_id=node.id, health_status="running"
+    )
     data.session.add(new_pod)
+
+    # Reduce available CPU on the node for the next pod creation
+    node.cpu_cores_avail -= cpu_cores_req
+
     data.session.commit()
 
-    return jsonify({"message": "Pod added successfully!"}), 200
+    return (
+        jsonify(
+            {"message": f"Pod '{name}' assigned to node '{node.name}' successfully!"}
+        ),
+        200,
+    )
 
 
 # List all pods
@@ -33,7 +56,7 @@ def list_pods():
             "name": pod.name,
             "cpu_cores_req": pod.cpu_cores_req,
             "node_id": pod.node_id,
-            "status": pod.status,
+            "health_status": pod.health_status,
         }
         for pod in pods
     ]
