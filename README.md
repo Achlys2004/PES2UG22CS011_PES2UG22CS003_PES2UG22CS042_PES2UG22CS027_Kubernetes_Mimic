@@ -4,7 +4,8 @@ Cloud Computing Mini Project Sem 6
 
 Install teh dependencies:
 
-```pip install Flask Flask-SQLAlchemy psycopg2
+```
+pip install Flask Flask-SQLAlchemy psycopg2
 
 pip install pymysql
 
