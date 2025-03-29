@@ -1,4 +1,4 @@
-# Kube 9 - A-Distributed-Systems-Cluster-Simulation-Framework(Kuberenetes_Clone)
+# Kube 9 - A-Distributed-Systems-Cluster-Simulation-Framework(Kubernetes_Clone)
 
 Cloud Computing Mini Project Sem 6
 
