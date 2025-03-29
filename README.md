@@ -11,6 +11,3 @@ pip install pymysql
 
 pip install cryptography
 ```
-
-
-hb 
