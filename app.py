@@ -1,5 +1,6 @@
 from flask import Flask
 from sqlalchemy import text
+from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
 from models import data
 from routes.nodes import nodes_bp
 from routes.pods import pods_bp
@@ -7,10 +8,9 @@ from routes.pods import pods_bp
 app = Flask(__name__)
 
 # Load Configuration
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "mysql+pymysql://Aathil:orchid123@localhost/cluster_db"
-)
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
+
 
 # Initialize Database
 data.init_app(app)
