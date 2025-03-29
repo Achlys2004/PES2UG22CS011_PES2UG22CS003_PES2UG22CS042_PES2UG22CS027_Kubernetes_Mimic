@@ -15,9 +15,9 @@ def add_node():
     cpu_cores_avail = payload.get("cpu_cores_avail")
 
     if not name:
-        return jsonify({"error": "Name is required"}), 400
+        return jsonify({"error": "Name is missing or incorrect"}), 400
     elif not cpu_cores_avail:
-        return jsonify({"error": "Cpu core count is required"}), 400
+        return jsonify({"error": "Cpu core count is missing or incorrect"}), 400
 
     new_node = Node(name=name, cpu_cores_avail=cpu_cores_avail)
     data.session.add(new_node)
