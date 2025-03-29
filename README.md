@@ -9,5 +9,5 @@ pip install Flask Flask-SQLAlchemy psycopg2
 
 pip install pymysql
 
- pip install cryptography
+pip install cryptography
 ```
