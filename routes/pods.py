@@ -5,7 +5,7 @@ pods_bp = Blueprint("pods", __name__)
 
 
 # Add a pod
-@pods_bp.route("/pods", methods=["POST"])
+@pods_bp.route("/", methods=["POST"])
 def add_pod():
     req_data = request.get_json()
     name = req_data.get("name")
@@ -47,7 +47,7 @@ def add_pod():
 
 
 # List all pods
-@pods_bp.route("/pods", methods=["GET"])
+@pods_bp.route("/", methods=["GET"])
 def list_pods():
     pods = Pod.query.all()
     result = [

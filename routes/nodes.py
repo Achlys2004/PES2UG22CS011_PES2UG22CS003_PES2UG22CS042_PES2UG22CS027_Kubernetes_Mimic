@@ -8,7 +8,7 @@ nodes_bp = Blueprint("nodes", __name__)
 
 
 # To add a new node
-@nodes_bp.route("/nodes", methods=["POST"])
+@nodes_bp.route("/", methods=["POST"])
 def add_node():
     payload = request.get_json()
     name = payload.get("name")
@@ -27,7 +27,7 @@ def add_node():
 
 
 # To list all nodes
-@nodes_bp.route("/nodes", methods=["GET"])
+@nodes_bp.route("/", methods=["GET"])
 def list_all_nodes():
     nodes = Node.query.all()
     nodes_list = [
