@@ -1,6 +1,4 @@
-from enum import unique
 from flask_sqlalchemy import SQLAlchemy
-from numpy import unicode_
 
 data = SQLAlchemy()
 
