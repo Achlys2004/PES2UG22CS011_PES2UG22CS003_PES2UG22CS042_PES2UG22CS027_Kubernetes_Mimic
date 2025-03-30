@@ -3,7 +3,6 @@ from models import data, Pod, Node
 
 pods_bp = Blueprint("pods", __name__)
 
-
 # Add a pod
 @pods_bp.route("/", methods=["POST"])
 def add_pod():
@@ -16,7 +15,7 @@ def add_pod():
     elif not cpu_cores_req:
         return jsonify({"error": "cpu_cores_req is missing or incorrect"}), 400
 
-    # this finds a node with enough cores
+    # Find a node with enough available cores
     node = Node.query.filter(
         Node.cpu_cores_avail >= cpu_cores_req, Node.health_status == "healthy"
     ).first()
@@ -27,13 +26,13 @@ def add_pod():
             400,
         )
 
-    # makes teh pod if node is found with enough cores
+    # Create the pod
     new_pod = Pod(
         name=name, cpu_cores_req=cpu_cores_req, node_id=node.id, health_status="running"
     )
     data.session.add(new_pod)
 
-    # Reduce available CPU on the node for the next pod creation
+    # Reduce available CPU on the node
     node.cpu_cores_avail -= cpu_cores_req
 
     data.session.commit()
@@ -44,7 +43,6 @@ def add_pod():
         ),
         200,
     )
-
 
 # List all pods
 @pods_bp.route("/", methods=["GET"])
@@ -61,3 +59,27 @@ def list_pods():
         for pod in pods
     ]
     return jsonify(result), 200
+
+# Delete a pod
+@pods_bp.route("/<int:pod_id>", methods=["DELETE"])
+def delete_pod(pod_id):
+    pod = Pod.query.get(pod_id)
+    
+    if not pod:
+        return jsonify({"error": "Pod not found"}), 404
+
+    node = Node.query.get(pod.node_id)
+
+    # Free up CPU resources on the node
+    if node:
+        node.cpu_cores_avail += pod.cpu_cores_req
+
+        # Check if the node becomes idle
+        if not Pod.query.filter_by(node_id=node.id).count():
+            node.health_status = "idle"
+
+    # Delete the pod
+    data.session.delete(pod)
+    data.session.commit()
+
+    return jsonify({"message": f"Pod {pod_id} deleted successfully"}), 200
