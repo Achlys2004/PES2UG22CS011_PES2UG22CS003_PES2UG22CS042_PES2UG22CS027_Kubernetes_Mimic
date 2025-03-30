@@ -38,3 +38,63 @@ def list_all_nodes():
         for node in nodes
     ]
     return jsonify(nodes_list), 200
+
+
+@nodes_bp.route("/health", methods=["GET"])
+def get_nodes_health():
+    nodes = Node.query.all()
+    health_report = []
+    for node in nodes:
+        health_report.append(
+            {
+                "node_id": node.id,
+                "node_name": node.name,
+                "health_status": node.health_status,
+                "pods_count": len(node.pods),
+            }
+        )
+    return jsonify(health_report), 200
+
+
+@nodes_bp.route("/<int:node_id>/health", methods=["PATCH"])
+def update_node_health(node_id):
+    data = request.get_json()
+    new_status = data.get("health_status")
+
+    if new_status not in ["healthy", "failed"]:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                }
+            ),
+            400,
+        )
+
+    node = Node.query.get(node_id)
+    if not node:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                }
+            ),
+            404,
+        )
+
+    node.health_status = new_status
+    data.session.commit()
+
+    return (
+        jsonify(
+            {
+                "message": f"Node {node_id} health updated to {new_status}",
+                "data": {
+                    "node_id": node.id,
+                    "node_name": node.name,
+                    "health_status": node.health_status,
+                },
+            }
+        ),
+        200,
+    )

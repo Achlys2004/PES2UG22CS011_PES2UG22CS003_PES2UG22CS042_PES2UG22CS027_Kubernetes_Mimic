@@ -1,8 +1,7 @@
-
-from flask import Flask, request, jsonify
+from flask import Flask
 from sqlalchemy import text
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
-from models import data, Pod, Node
+from models import data
 from routes.nodes import nodes_bp
 from routes.pods import pods_bp
 app = Flask(__name__)
