@@ -1,7 +1,5 @@
 from platform import node
-from unittest import result
 from flask import Blueprint, request, jsonify
-from networkx import nodes
 from models import data, Node
 
 nodes_bp = Blueprint("nodes", __name__)
