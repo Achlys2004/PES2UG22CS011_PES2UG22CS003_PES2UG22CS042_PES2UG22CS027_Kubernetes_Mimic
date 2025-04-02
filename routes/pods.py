@@ -24,7 +24,6 @@ def add_pod():
     elif not containers_data:
         return jsonify({"error": "At least one container is required"}), 400
 
-    # Find a worker node with enough available cores and healthy components
     node = Node.query.filter(
         Node.cpu_cores_avail >= cpu_cores_req,
         Node.health_status == "healthy",
@@ -43,15 +42,12 @@ def add_pod():
             400,
         )
 
-    # Generate a simulated IP address for the pod
     base_ip = "10.244.0.0"
     network = ipaddress.ip_network(f"{base_ip}/16")
     random_ip = str(random.choice(list(network.hosts())))
 
-    # Determine pod type based on number of containers
     pod_type = "multi-container" if len(containers_data) > 1 else "single-container"
 
-    # Create the pod
     new_pod = Pod(
         name=name,
         cpu_cores_req=cpu_cores_req,
@@ -63,9 +59,8 @@ def add_pod():
         has_config=len(config_data) > 0,
     )
     data.session.add(new_pod)
-    data.session.flush()  # To get the pod ID for relations
+    data.session.flush()  
 
-    # Add containers to the pod
     for container_data in containers_data:
         container = Container(
             name=container_data.get(
@@ -81,7 +76,6 @@ def add_pod():
         )
         data.session.add(container)
 
-    # Add volumes if specified
     for volume_data in volumes_data:
         volume = Volume(
             name=volume_data.get("name", f"{name}-volume-{random.randint(1000, 9999)}"),
@@ -92,7 +86,6 @@ def add_pod():
         )
         data.session.add(volume)
 
-    # Add configuration items if specified
     for config_item in config_data:
         config = ConfigItem(
             name=config_item.get("name", f"{name}-config-{random.randint(1000, 9999)}"),
@@ -103,10 +96,8 @@ def add_pod():
         )
         data.session.add(config)
 
-    # Reduce available CPU on the node
     node.cpu_cores_avail -= cpu_cores_req
 
-    # Change pod status to running once everything is set up
     new_pod.health_status = "running"
     for container in new_pod.containers:
         container.status = "running"
@@ -132,17 +123,14 @@ def add_pod():
     )
 
 
-# List all pods with detailed information
 @pods_bp.route("/", methods=["GET"])
 def list_pods():
     pods = Pod.query.all()
     result = []
 
     for pod in pods:
-        # Get node info
         node = Node.query.get(pod.node_id)
 
-        # Get container details
         containers = [
             {
                 "id": container.id,
@@ -155,7 +143,6 @@ def list_pods():
             for container in pod.containers
         ]
 
-        # Get volume details
         volumes = (
             [
                 {
@@ -170,7 +157,6 @@ def list_pods():
             else []
         )
 
-        # Get config details
         configs = (
             [
                 {
@@ -209,7 +195,6 @@ def list_pods():
     return jsonify(result), 200
 
 
-# Get pod details by ID
 @pods_bp.route("/<int:pod_id>", methods=["GET"])
 def get_pod(pod_id):
     pod = Pod.query.get(pod_id)
@@ -217,10 +202,8 @@ def get_pod(pod_id):
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
 
-    # Get node info
     node = Node.query.get(pod.node_id)
 
-    # Get container details
     containers = [
         {
             "id": container.id,
@@ -235,7 +218,6 @@ def get_pod(pod_id):
         for container in pod.containers
     ]
 
-    # Get volume details
     volumes = (
         [
             {
@@ -250,7 +232,6 @@ def get_pod(pod_id):
         else []
     )
 
-    # Get config details
     configs = (
         [
             {
@@ -283,7 +264,6 @@ def get_pod(pod_id):
     return jsonify(pod_data), 200
 
 
-# Simulate pod crash and attempt to reschedule
 @pods_bp.route("/<int:pod_id>/crash", methods=["POST"])
 def crash_pod(pod_id):
     pod = Pod.query.get(pod_id)
@@ -291,23 +271,18 @@ def crash_pod(pod_id):
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
 
-    # Update pod status to failed
     pod.health_status = "failed"
 
-    # Update container statuses
     for container in pod.containers:
         container.status = "failed"
 
     data.session.commit()
 
-    # Attempt to reschedule on another node
     try:
-        # Free up CPU on current node
         current_node = Node.query.get(pod.node_id)
         if current_node:
             current_node.cpu_cores_avail += pod.cpu_cores_req
 
-        # Find a new node
         new_node = Node.query.filter(
             Node.id != pod.node_id,
             Node.cpu_cores_avail >= pod.cpu_cores_req,
@@ -318,20 +293,16 @@ def crash_pod(pod_id):
         ).first()
 
         if new_node:
-            # Assign to new node
             pod.node_id = new_node.id
             pod.health_status = "running"
 
-            # Update container statuses
             for container in pod.containers:
                 container.status = "running"
 
-            # Generate a new IP address
             base_ip = "10.244.0.0"
             network = ipaddress.ip_network(f"{base_ip}/16")
             pod.ip_address = str(random.choice(list(network.hosts())))
 
-            # Reduce CPU on new node
             new_node.cpu_cores_avail -= pod.cpu_cores_req
 
             data.session.commit()
@@ -349,7 +320,6 @@ def crash_pod(pod_id):
                 200,
             )
         else:
-            # No available node found
             pod.health_status = "pending"
             data.session.commit()
 
@@ -368,7 +338,6 @@ def crash_pod(pod_id):
         return jsonify({"error": f"Error during rescheduling: {str(e)}"}), 500
 
 
-# Delete a pod
 @pods_bp.route("/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
     pod = Pod.query.get(pod_id)
@@ -378,11 +347,9 @@ def delete_pod(pod_id):
 
     node = Node.query.get(pod.node_id)
 
-    # Free up CPU resources on the node
     if node:
         node.cpu_cores_avail += pod.cpu_cores_req
 
-    # Delete the pod (will cascade delete containers, volumes, configs)
     data.session.delete(pod)
     data.session.commit()
 
