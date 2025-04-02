@@ -65,7 +65,7 @@ class Container(data.Model):
 
     # Container resources
     cpu_req = data.Column(data.Float, default=0.1)  # CPU cores requested
-    memory_req = data.Column(data.Integer, default=128)  \
+    memory_req = data.Column(data.Integer, default=128) 
 
     # Container startup properties
     command = data.Column(data.String(200), nullable=True)
