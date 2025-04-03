@@ -1,0 +1,16 @@
+# Web Framework
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Database
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.21
+Flask-Migrate==4.0.5
+alembic==1.12.0
+
+# Database Adapters
+psycopg2-binary==2.9.7  # PostgreSQL
+pymysql==1.1.0          # MySQL
+cryptography==41.0.4    # Required for PyMySQL
+
+#pip install -r requirements.txt

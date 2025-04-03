@@ -2,8 +2,12 @@ from flask import Blueprint, request, jsonify
 import random
 import ipaddress
 from models import data, Pod, Node, Container, Volume, ConfigItem
+from services.docker_service import DockerService
 
 pods_bp = Blueprint("pods", __name__)
+
+# Initialize Docker service
+docker_service = DockerService()
 
 
 # Add a pod
@@ -59,7 +63,7 @@ def add_pod():
         has_config=len(config_data) > 0,
     )
     data.session.add(new_pod)
-    data.session.flush()  
+    data.session.flush()
 
     for container_data in containers_data:
         container = Container(
@@ -103,6 +107,67 @@ def add_pod():
         container.status = "running"
 
     data.session.commit()
+
+    try:
+        network_name = f"pod-network-{new_pod.id}"
+        network_id = docker_service.create_network(network_name)
+        new_pod.docker_network_id = network_id
+
+        for volume in new_pod.volumes:
+            volume_name = f"pod-{new_pod.id}-volume-{volume.id}"
+            docker_volume = docker_service.create_volume(volume_name)
+            volume.docker_volume_name = docker_volume
+
+        for container in new_pod.containers:
+            env_vars = {}
+            for config in new_pod.config_items:
+                if config.config_type == "env":
+                    env_vars[config.key] = config.value
+
+            volume_mounts = []
+            for volume in new_pod.volumes:
+                volume_mounts.append(
+                    {volume.docker_volume_name: {"bind": volume.path, "mode": "rw"}}
+                )
+
+            container_name = f"pod-{new_pod.id}-{container.name}"
+            container_id = docker_service.create_container(
+                name=container_name,
+                image=container.image,
+                command=container.command,
+                environment=env_vars,
+                volumes=volume_mounts if volume_mounts else None,
+                network=network_name,
+                cpu_limit=container.cpu_req,
+                memory_limit=f"{container.memory_req}m",
+            )
+
+            container.docker_container_id = container_id
+
+            docker_service.start_container(container_id)
+            container.status = "running"
+            container.docker_status = "running"
+
+        data.session.commit()
+
+    except Exception as e:
+        for container in new_pod.containers:
+            if container.docker_container_id:
+                docker_service.remove_container(
+                    container.docker_container_id, force=True
+                )
+
+        if new_pod.docker_network_id:
+            docker_service.remove_network(new_pod.docker_network_id)
+
+        for volume in new_pod.volumes:
+            if volume.docker_volume_name:
+                docker_service.remove_volume(volume.docker_volume_name)
+
+        new_pod.health_status = "failed"
+        data.session.commit()
+
+        return jsonify({"error": f"Error creating Docker resources: {str(e)}"}), 500
 
     return (
         jsonify(
@@ -345,8 +410,22 @@ def delete_pod(pod_id):
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
 
-    node = Node.query.get(pod.node_id)
+    try:
+        for container in pod.containers:
+            if container.docker_container_id:
+                docker_service.stop_container(container.docker_container_id)
+                docker_service.remove_container(container.docker_container_id)
 
+        if pod.docker_network_id:
+            docker_service.remove_network(pod.docker_network_id)
+
+        for volume in pod.volumes:
+            if volume.docker_volume_name:
+                docker_service.remove_volume(volume.docker_volume_name)
+    except Exception as e:
+        return jsonify({"error": f"Error removing Docker resources: {str(e)}"}), 500
+
+    node = Node.query.get(pod.node_id)
     if node:
         node.cpu_cores_avail += pod.cpu_cores_req
 
@@ -354,3 +433,36 @@ def delete_pod(pod_id):
     data.session.commit()
 
     return jsonify({"message": f"Pod {pod_id} deleted successfully"}), 200
+
+
+@pods_bp.route("/<int:pod_id>/health", methods=["GET"])
+def check_pod_health(pod_id):
+    pod = Pod.query.get(pod_id)
+
+    if not pod:
+        return jsonify({"error": "Pod not found"}), 404
+
+    container_statuses = []
+    for container in pod.containers:
+        if container.docker_container_id:
+            current_status = docker_service.get_container_status(
+                container.docker_container_id
+            )
+            container_statuses.append(
+                {
+                    "container_id": container.id,
+                    "name": container.name,
+                    "image": container.image,
+                    "docker_status": current_status,
+                    "app_status": container.status,
+                }
+            )
+
+    health_data = {
+        "pod_id": pod.id,
+        "pod_name": pod.name,
+        "overall_status": pod.health_status,
+        "containers": container_statuses,
+    }
+
+    return jsonify(health_data), 200

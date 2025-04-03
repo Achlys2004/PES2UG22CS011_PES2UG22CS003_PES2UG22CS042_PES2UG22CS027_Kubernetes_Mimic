@@ -5,18 +5,18 @@ from models import data
 from routes.nodes import nodes_bp
 from routes.pods import pods_bp
 from flask_migrate import Migrate
+from services.monitor import DockerMonitor
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
 
-# Initialize Database
 data.init_app(app)
 
-# Initialize Flask-Migrate
+docker_monitor = DockerMonitor(app)
+
 migrate = Migrate(app, data)
 
-# Register Blueprints with URL Prefixes
 app.register_blueprint(nodes_bp, url_prefix="/nodes")
 app.register_blueprint(pods_bp, url_prefix="/pods")
 
@@ -37,4 +37,6 @@ def test_db():
 
 
 if __name__ == "__main__":
+    docker_monitor.start()
     app.run(debug=True)
+    docker_monitor.stop()

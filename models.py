@@ -34,19 +34,15 @@ class Pod(data.Model):
     node_id = data.Column(data.Integer, data.ForeignKey("nodes.id"), nullable=False)
     health_status = data.Column(data.String(20), default="pending")
 
-    # Pod networking
-    ip_address = data.Column(data.String(15), nullable=True)  # Internal IP address
+    ip_address = data.Column(data.String(15), nullable=True)
 
-    # Pod type
-    pod_type = data.Column(
-        data.String(20), default="single-container"
-    )  # single-container or multi-container
+    pod_type = data.Column(data.String(20), default="single-container")
 
-    # Pod storage and configuration flags
     has_volumes = data.Column(data.Boolean, default=False)
     has_config = data.Column(data.Boolean, default=False)
 
-    # Relationship to containers
+    docker_network_id = data.Column(data.String(64), nullable=True)
+
     containers = data.relationship(
         "Container", backref="pod", lazy=True, cascade="all, delete-orphan"
     )
@@ -57,19 +53,19 @@ class Container(data.Model):
 
     id = data.Column(data.Integer, primary_key=True)
     name = data.Column(data.String(40), nullable=False)
-    image = data.Column(data.String(100), nullable=False)  # Docker image name
-    status = data.Column(
-        data.String(20), default="pending"
-    )  # pending, running, failed, etc.
+    image = data.Column(data.String(100), nullable=False)
+    status = data.Column(data.String(20), default="pending")
     pod_id = data.Column(data.Integer, data.ForeignKey("pods.id"), nullable=False)
 
-    # Container resources
-    cpu_req = data.Column(data.Float, default=0.1)  # CPU cores requested
-    memory_req = data.Column(data.Integer, default=128) 
+    cpu_req = data.Column(data.Float, default=0.1)
+    memory_req = data.Column(data.Integer, default=128)
 
-    # Container startup properties
     command = data.Column(data.String(200), nullable=True)
     args = data.Column(data.String(200), nullable=True)
+
+    docker_container_id = data.Column(data.String(64), nullable=True)
+    docker_status = data.Column(data.String(20), nullable=True)
+    exit_code = data.Column(data.Integer, nullable=True)
 
 
 class Volume(data.Model):
@@ -77,14 +73,13 @@ class Volume(data.Model):
 
     id = data.Column(data.Integer, primary_key=True)
     name = data.Column(data.String(40), nullable=False)
-    volume_type = data.Column(
-        data.String(20), default="emptyDir"
-    )  # emptyDir, hostPath, configMap, etc.
-    size = data.Column(data.Integer, default=1)  # Size in GB
-    path = data.Column(data.String(200), nullable=False)  # Mount path in container
+    volume_type = data.Column(data.String(20), default="emptyDir")
+    size = data.Column(data.Integer, default=1)
+    path = data.Column(data.String(200), nullable=False)
     pod_id = data.Column(data.Integer, data.ForeignKey("pods.id"), nullable=False)
 
-    # Relationship
+    docker_volume_name = data.Column(data.String(64), nullable=True)
+
     pod = data.relationship("Pod", backref="volumes", lazy=True)
 
 
@@ -93,10 +88,9 @@ class ConfigItem(data.Model):
 
     id = data.Column(data.Integer, primary_key=True)
     name = data.Column(data.String(40), nullable=False)
-    config_type = data.Column(data.String(20), default="env")  # env, secret, configMap
+    config_type = data.Column(data.String(20), default="env")
     key = data.Column(data.String(100), nullable=False)
     value = data.Column(data.String(500), nullable=False)
     pod_id = data.Column(data.Integer, data.ForeignKey("pods.id"), nullable=False)
 
-    # Relationship
     pod = data.relationship("Pod", backref="config_items", lazy=True)
