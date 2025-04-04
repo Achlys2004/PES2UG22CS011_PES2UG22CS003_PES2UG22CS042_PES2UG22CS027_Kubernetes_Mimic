@@ -260,149 +260,6 @@ def list_pods():
     return jsonify(result), 200
 
 
-@pods_bp.route("/<int:pod_id>", methods=["GET"])
-def get_pod(pod_id):
-    pod = Pod.query.get(pod_id)
-
-    if not pod:
-        return jsonify({"error": "Pod not found"}), 404
-
-    node = Node.query.get(pod.node_id)
-
-    containers = [
-        {
-            "id": container.id,
-            "name": container.name,
-            "image": container.image,
-            "status": container.status,
-            "cpu": container.cpu_req,
-            "memory": container.memory_req,
-            "command": container.command,
-            "args": container.args,
-        }
-        for container in pod.containers
-    ]
-
-    volumes = (
-        [
-            {
-                "name": volume.name,
-                "type": volume.volume_type,
-                "size": volume.size,
-                "path": volume.path,
-            }
-            for volume in pod.volumes
-        ]
-        if hasattr(pod, "volumes")
-        else []
-    )
-
-    configs = (
-        [
-            {
-                "name": config.name,
-                "type": config.config_type,
-                "key": config.key,
-                "value": config.value if config.config_type != "secret" else "******",
-            }
-            for config in pod.config_items
-        ]
-        if hasattr(pod, "config_items")
-        else []
-    )
-
-    pod_data = {
-        "id": pod.id,
-        "name": pod.name,
-        "cpu_cores_req": pod.cpu_cores_req,
-        "node": (
-            {"id": node.id, "name": node.name, "type": node.node_type} if node else None
-        ),
-        "health_status": pod.health_status,
-        "ip_address": pod.ip_address,
-        "type": pod.pod_type,
-        "containers": containers,
-        "volumes": volumes,
-        "config": configs,
-    }
-
-    return jsonify(pod_data), 200
-
-
-@pods_bp.route("/<int:pod_id>/crash", methods=["POST"])
-def crash_pod(pod_id):
-    pod = Pod.query.get(pod_id)
-
-    if not pod:
-        return jsonify({"error": "Pod not found"}), 404
-
-    pod.health_status = "failed"
-
-    for container in pod.containers:
-        container.status = "failed"
-
-    data.session.commit()
-
-    try:
-        current_node = Node.query.get(pod.node_id)
-        if current_node:
-            current_node.cpu_cores_avail += pod.cpu_cores_req
-
-        new_node = Node.query.filter(
-            Node.id != pod.node_id,
-            Node.cpu_cores_avail >= pod.cpu_cores_req,
-            Node.health_status == "healthy",
-            Node.node_type == "worker",
-            Node.kubelet_status == "running",
-            Node.container_runtime_status == "running",
-        ).first()
-
-        if new_node:
-            pod.node_id = new_node.id
-            pod.health_status = "running"
-
-            for container in pod.containers:
-                container.status = "running"
-
-            base_ip = "10.244.0.0"
-            network = ipaddress.ip_network(f"{base_ip}/16")
-            pod.ip_address = str(random.choice(list(network.hosts())))
-
-            new_node.cpu_cores_avail -= pod.cpu_cores_req
-
-            data.session.commit()
-
-            return (
-                jsonify(
-                    {
-                        "message": f"Pod {pod.name} crashed and was rescheduled to node {new_node.name}",
-                        "pod_id": pod.id,
-                        "new_node_id": new_node.id,
-                        "new_node_name": new_node.name,
-                        "new_ip": pod.ip_address,
-                    }
-                ),
-                200,
-            )
-        else:
-            pod.health_status = "pending"
-            data.session.commit()
-
-            return (
-                jsonify(
-                    {
-                        "message": f"Pod {pod.name} crashed but could not be rescheduled - no available nodes",
-                        "pod_id": pod.id,
-                        "status": "pending",
-                    }
-                ),
-                200,
-            )
-
-    except Exception as e:
-        return jsonify({"error": f"Error during rescheduling: {str(e)}"}), 500
-
-
 @pods_bp.route("/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
     pod = Pod.query.get(pod_id)
@@ -410,25 +267,17 @@ def delete_pod(pod_id):
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
 
-    try:
-        for container in pod.containers:
-            if container.docker_container_id:
-                docker_service.stop_container(container.docker_container_id)
-                docker_service.remove_container(container.docker_container_id)
-
-        if pod.docker_network_id:
-            docker_service.remove_network(pod.docker_network_id)
-
-        for volume in pod.volumes:
-            if volume.docker_volume_name:
-                docker_service.remove_volume(volume.docker_volume_name)
-    except Exception as e:
-        return jsonify({"error": f"Error removing Docker resources: {str(e)}"}), 500
-
     node = Node.query.get(pod.node_id)
+
+    
     if node:
         node.cpu_cores_avail += pod.cpu_cores_req
 
+        
+        if not Pod.query.filter_by(node_id=node.id).count():
+            node.health_status = "idle"
+
+    
     data.session.delete(pod)
     data.session.commit()
 
