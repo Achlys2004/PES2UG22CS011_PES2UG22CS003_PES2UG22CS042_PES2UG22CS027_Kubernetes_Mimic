@@ -63,3 +63,15 @@ flask db migrate -m "Initial migration"
 # Apply the migration
 flask db upgrade
 ```
+
+#### containers and all
+
+```
+# build the image
+docker build -t kube node .
+
+# run the simulated nodes
+docker run -d --name node1 -p 5001:5000 kube-node
+docker run -d --name node2 -p 5002:5000 kube-node
+docker run -d --name node3 -p 5003:5000 kube-node
+```
