@@ -10,7 +10,7 @@ def add_node():
     payload = request.get_json()
     name = payload.get("name")
     cpu_cores_avail = payload.get("cpu_cores_avail")
-    node_type = payload.get("node_type", "worker")  # Default to worker node
+    node_type = payload.get("node_type", "worker") 
 
     if not name:
         return jsonify({"error": "Name is missing or incorrect"}), 400
@@ -102,7 +102,6 @@ def get_nodes_health():
             },
         }
 
-        # Add master components if it's a master node
         if node.node_type == "master":
             node_report["component_status"].update(
                 {
@@ -149,7 +148,6 @@ def update_node_health(node_id):
     )
 
 
-# New route to update component status
 @nodes_bp.route("/<int:node_id>/components", methods=["PATCH"])
 def update_component_status(node_id):
     payload = request.get_json()
