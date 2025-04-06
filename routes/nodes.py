@@ -67,7 +67,7 @@ def list_all_nodes():
             },
         }
 
-        # Add master components if it's a master node
+        # Master node
         if node.node_type == "master":
             node_data["components"].update(
                 {
