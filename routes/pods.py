@@ -15,6 +15,18 @@ docker_service = DockerService()
 def add_pod():
     req_data = request.get_json()
     name = req_data.get("name")
+
+    existing_pod = Pod.query.filter_by(name=name).first()
+    if existing_pod:
+        return (
+            jsonify(
+                {
+                    "error": f"A pod with name '{name}' already exists. Please use a different name."
+                }
+            ),
+            409,
+        )
+
     cpu_cores_req = req_data.get("cpu_cores_req")
     containers_data = req_data.get("containers", [])
     volumes_data = req_data.get("volumes", [])
@@ -124,11 +136,9 @@ def add_pod():
                 if config.config_type == "env":
                     env_vars[config.key] = config.value
 
-            volume_mounts = []
+            volume_mounts = {}
             for volume in new_pod.volumes:
-                volume_mounts.append(
-                    {volume.docker_volume_name: {"bind": volume.path, "mode": "rw"}}
-                )
+                volume_mounts[volume.path] = {"bind": volume.path, "mode": "rw"}
 
             container_name = f"pod-{new_pod.id}-{container.name}"
             container_id = docker_service.create_container(
@@ -269,15 +279,12 @@ def delete_pod(pod_id):
 
     node = Node.query.get(pod.node_id)
 
-    
     if node:
         node.cpu_cores_avail += pod.cpu_cores_req
 
-        
         if not Pod.query.filter_by(node_id=node.id).count():
             node.health_status = "idle"
 
-    
     data.session.delete(pod)
     data.session.commit()
 

@@ -80,7 +80,11 @@ class Volume(data.Model):
 
     docker_volume_name = data.Column(data.String(64), nullable=True)
 
-    pod = data.relationship("Pod", backref="volumes", lazy=True)
+    pod = data.relationship(
+        "Pod",
+        backref=data.backref("volumes", lazy=True, cascade="all, delete-orphan"),
+        lazy=True,
+    )
 
 
 class ConfigItem(data.Model):
@@ -93,4 +97,8 @@ class ConfigItem(data.Model):
     value = data.Column(data.String(500), nullable=False)
     pod_id = data.Column(data.Integer, data.ForeignKey("pods.id"), nullable=False)
 
-    pod = data.relationship("Pod", backref="config_items", lazy=True)
+    pod = data.relationship(
+        "Pod",
+        backref=data.backref("config_items", lazy=True, cascade="all, delete-orphan"),
+        lazy=True,
+    )

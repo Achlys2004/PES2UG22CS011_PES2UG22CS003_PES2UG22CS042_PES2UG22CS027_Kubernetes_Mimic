@@ -102,6 +102,16 @@ class DockerService:
             self.logger.error(f"Error creating volume: {str(e)}")
             raise
 
+    def remove_volume(self, volume_name: str) -> bool:
+        """Remove a Docker volume"""
+        try:
+            volume = self.client.volumes.get(volume_name)
+            volume.remove()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error removing volume: {str(e)}")
+            return False
+
     def get_container_status(self, container_id: str) -> str:
         """Get container status"""
         try:

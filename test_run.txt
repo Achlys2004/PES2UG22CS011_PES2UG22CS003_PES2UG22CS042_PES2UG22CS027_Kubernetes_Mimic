@@ -1,0 +1,159 @@
+Running Kube-9 with Postman and Docker Integration
+Here's a step-by-step guide to test your Kubernetes-like application using Postman, including the Docker integration.
+
+Step 1: Prepare Your Environment
+Ensure Docker is running on your system
+Make sure your database is properly configured in config.py
+Install any missing dependencies:
+
+    pip install docker flask-migrate ipaddress
+
+Step 2: Run Your Application
+First, apply migrations if you haven't already:
+
+    in README
+
+Start your application:
+
+    python app.py
+
+Step 3: Test with Postman
+Collection Setup
+Create a new Postman collection named "Kube-9" with these folders:
+
+
+1. Test Node Operations
+Create a Node
+Method: POST
+URL: http://localhost:5000/nodes/
+Headers: Content-Type: application/json
+Body:
+
+{
+  "name": "worker-1",
+  "cpu_cores_avail": 4,
+  "node_type": "worker"
+}
+
+Create a Master Node
+Method: POST
+URL: http://localhost:5000/nodes/
+Headers: Content-Type: application/json
+Body:
+
+{
+  "name": "master-1",
+  "cpu_cores_avail": 8,
+  "node_type": "master"
+}
+
+List All Nodes
+Method: GET
+URL: http://localhost:5000/nodes/
+
+Check Node Health
+Method: GET
+URL: http://localhost:5000/nodes/health
+
+
+2. Test Pod Operations (with Docker Integration)
+Create a Simple Pod
+Method: POST
+URL: http://localhost:5000/pods/
+Headers: Content-Type: application/json
+Body:
+
+{
+  "name": "nginx-pod",
+  "cpu_cores_req": 1,
+  "containers": [
+    {
+      "name": "nginx",
+      "image": "nginx:latest",
+      "cpu_req": 0.5,
+      "memory_req": 256
+    }
+  ]
+}
+
+Create a Pod with Volume and Config
+Method: POST
+URL: http://localhost:5000/pods/
+Headers: Content-Type: application/json
+Body:
+
+{
+  "name": "web_app_1",
+  "cpu_cores_req": 2,
+  "containers": [
+    {
+      "name": "web",
+      "image": "httpd:latest",
+      "cpu_req": 1.0,
+      "memory_req": 512
+    }
+  ],
+  "volumes": [
+    {
+      "name": "data-volume",
+      "type": "emptyDir",
+      "size": 1,
+      "path": "/data"
+    }
+  ],
+  "config": [
+    {
+      "name": "env-config",
+      "type": "env",
+      "key": "ENV_TYPE",
+      "value": "production"
+    }
+  ]
+}
+
+List All Pods
+Method: GET
+URL: http://localhost:5000/pods/
+
+Check Pod Health
+Method: GET
+URL: http://localhost:5000/pods/1/health
+(Replace '1' with the actual pod ID from the list pods response)
+
+Delete a Pod
+Method: DELETE
+URL: http://localhost:5000/pods/1
+(Replace '1' with the actual pod ID)
+
+
+3. Verify Docker Integration
+After creating pods, verify Docker created the containers:
+
+    # Check Docker containers
+    docker ps
+
+    # Check Docker networks
+    docker network ls | grep pod-network
+
+    # Check Docker volumes
+    docker volume ls | grep pod
+
+Step 4: Troubleshooting Tips
+Connection Issues:
+ -Ensure your firewall allows connections to port 5000
+ -Try http://127.0.0.1:5000 if localhost doesn't work
+
+Docker Issues:
+ -Check Docker daemon is running: docker info
+ -Verify Python has permissions to access Docker: docker ps should work from command line
+Database Issues:
+ -If you see the column errors about docker_container_id, run:
+    flask db migrate -m "Add Docker fields"
+    flask db upgrade
+
+API Response Issues:
+ -Check app logs for detailed error information
+ -Verify the JSON payload matches the expected format
+ 
+This should help you test your Kubernetes-like application through Postman while verifying the Docker integration works correctly.
+
