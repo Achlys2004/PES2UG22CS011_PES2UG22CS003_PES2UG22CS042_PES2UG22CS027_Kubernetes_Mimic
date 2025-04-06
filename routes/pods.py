@@ -3,6 +3,7 @@ import random
 import ipaddress
 from models import data, Pod, Node, Container, Volume, ConfigItem
 from services.docker_service import DockerService
+import docker
 
 pods_bp = Blueprint("pods", __name__)
 
@@ -15,18 +16,6 @@ docker_service = DockerService()
 def add_pod():
     req_data = request.get_json()
     name = req_data.get("name")
-
-    existing_pod = Pod.query.filter_by(name=name).first()
-    if existing_pod:
-        return (
-            jsonify(
-                {
-                    "error": f"A pod with name '{name}' already exists. Please use a different name."
-                }
-            ),
-            409,
-        )
-
     cpu_cores_req = req_data.get("cpu_cores_req")
     containers_data = req_data.get("containers", [])
     volumes_data = req_data.get("volumes", [])
@@ -136,9 +125,11 @@ def add_pod():
                 if config.config_type == "env":
                     env_vars[config.key] = config.value
 
-            volume_mounts = {}
+            volume_mounts = []
             for volume in new_pod.volumes:
-                volume_mounts[volume.path] = {"bind": volume.path, "mode": "rw"}
+                volume_mounts.append(
+                    {volume.docker_volume_name: {"bind": volume.path, "mode": "rw"}}
+                )
 
             container_name = f"pod-{new_pod.id}-{container.name}"
             container_id = docker_service.create_container(
@@ -270,30 +261,51 @@ def list_pods():
     return jsonify(result), 200
 
 
-@pods_bp.route("/<int:pod_id>", methods=["DELETE"])
+def delete_docker_container(container_name):
+    try:
+        client = docker.from_env()
+        container = client.containers.get(container_name)
+        container.stop()
+        container.remove()
+        return f"Container '{container_name}' stopped and removed successfully."
+    except docker.errors.NotFound:
+        return f"Container '{container_name}' not found."
+    except Exception as e:
+        return f"Error while deleting container '{container_name}': {str(e)}"
+
+@pods_bp.route('/pods/<int:pod_id>', methods=['DELETE'])
 def delete_pod(pod_id):
     pod = Pod.query.get(pod_id)
-
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
 
     node = Node.query.get(pod.node_id)
-
+    
+    # Free up CPU resources
     if node:
         node.cpu_cores_avail += pod.cpu_cores_req
 
-        if not Pod.query.filter_by(node_id=node.id).count():
-            node.health_status = "idle"
+    # Delete associated Docker container (assume pod.name == container name)
+    container_result = delete_docker_container(pod.name)
 
+    # Delete the pod
     data.session.delete(pod)
     data.session.commit()
 
-    return jsonify({"message": f"Pod {pod_id} deleted successfully"}), 200
+    # Check if the node is now idle
+    if node and not Pod.query.filter_by(node_id=node.id).count():
+        node.health_status = 'idle'
+        data.session.commit()
+
+    return jsonify({
+        "message": f"Pod {pod_id} deleted successfully",
+        "docker": container_result
+    }), 200
 
 
 @pods_bp.route("/<int:pod_id>/health", methods=["GET"])
 def check_pod_health(pod_id):
-    pod = Pod.query.get(pod_id)
+    pod = Pod.query.get(pod_id) 
 
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
