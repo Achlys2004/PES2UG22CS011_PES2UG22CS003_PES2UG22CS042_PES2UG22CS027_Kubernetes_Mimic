@@ -242,3 +242,14 @@ def receive_heartbeat(node_id):
         ), 
         200,
     )
+
+@nodes_bp.route('/<int:node_id>', methods=['GET'])
+def get_node(node_id):
+    node = Node.query.get(node_id)
+    if not node:
+        return jsonify({"error": "Node not found"}), 404
+    return jsonify({
+        "id": node.id,
+        "last_heartbeat": node.last_heartbeat,
+        "health_status": node.health_status
+    }), 200
