@@ -273,39 +273,48 @@ def delete_docker_container(container_name):
     except Exception as e:
         return f"Error while deleting container '{container_name}': {str(e)}"
 
-@pods_bp.route('/pods/<int:pod_id>', methods=['DELETE'])
+
+@pods_bp.route("/pods/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
     pod = Pod.query.get(pod_id)
     if not pod:
         return jsonify({"error": "Pod not found"}), 404
 
+    try:
+        # Stop and remove all containers in the pod
+        for container in pod.containers:
+            if container.docker_container_id:
+                docker_service.stop_container(container.docker_container_id)
+                docker_service.remove_container(
+                    container.docker_container_id, force=True
+                )
+
+        if pod.docker_network_id:
+            docker_service.remove_network(pod.docker_network_id)
+
+        for volume in pod.volumes:
+            if volume.docker_volume_name:
+                docker_service.remove_volume(volume.docker_volume_name)
+    except Exception as e:
+        return jsonify({"error": f"Error removing Docker resources: {str(e)}"}), 500
+
     node = Node.query.get(pod.node_id)
-    
-    # Free up CPU resources
     if node:
         node.cpu_cores_avail += pod.cpu_cores_req
 
-    # Delete associated Docker container (assume pod.name == container name)
-    container_result = delete_docker_container(pod.name)
-
-    # Delete the pod
     data.session.delete(pod)
     data.session.commit()
 
-    # Check if the node is now idle
     if node and not Pod.query.filter_by(node_id=node.id).count():
-        node.health_status = 'idle'
+        node.health_status = "idle"
         data.session.commit()
 
-    return jsonify({
-        "message": f"Pod {pod_id} deleted successfully",
-        "docker": container_result
-    }), 200
+    return jsonify({"message": f"Pod {pod_id} deleted successfully"}), 200
 
 
 @pods_bp.route("/<int:pod_id>/health", methods=["GET"])
 def check_pod_health(pod_id):
-    pod = Pod.query.get(pod_id) 
+    pod = Pod.query.get(pod_id)
 
     if not pod:
         return jsonify({"error": "Pod not found"}), 404

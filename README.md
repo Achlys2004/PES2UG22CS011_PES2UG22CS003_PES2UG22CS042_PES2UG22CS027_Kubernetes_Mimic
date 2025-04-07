@@ -68,7 +68,7 @@ flask db upgrade
 
 ```
 # build the image
-docker build -t kube node .
+docker build -t kube-node .
 
 # run the simulated nodes
 docker run -d --name node1 -p 5001:5000 kube-node

@@ -7,6 +7,9 @@ node_state = {
     "cpu_cores_avail": 4,
     "health_status": "healthy"
 }
+@app.route("/", methods=["GET"])
+def home():
+    return "Kube-9 Node Simulator is running!"
 
 @app.route("/status", methods=["GET"])
 def status():
