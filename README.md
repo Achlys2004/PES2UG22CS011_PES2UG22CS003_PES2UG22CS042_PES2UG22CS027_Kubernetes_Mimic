@@ -75,3 +75,11 @@ docker run -d --name node1 -p 5001:5000 kube-node
 docker run -d --name node2 -p 5002:5000 kube-node
 docker run -d --name node3 -p 5003:5000 kube-node
 ```
+#Check initial health status
+GET http://localhost:5000/nodes/health
+
+#send test heartbeat:
+POST http://localhost:5000/nodes/1/heartbeat    
+
+#check heartbeat
+GET http://localhost:5000/nodes/1
