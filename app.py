@@ -20,7 +20,6 @@ migrate = Migrate(app, data)
 app.register_blueprint(nodes_bp, url_prefix="/nodes")
 app.register_blueprint(pods_bp, url_prefix="/pods")
 
-
 @app.route("/")
 def home():
     return "Kube_9 API is running!"

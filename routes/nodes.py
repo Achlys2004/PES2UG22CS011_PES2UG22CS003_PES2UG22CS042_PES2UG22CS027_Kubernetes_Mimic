@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models import data, Node
-
+from datetime import datetime
 nodes_bp = Blueprint("nodes", __name__)
 
 
@@ -220,5 +220,25 @@ def update_component_status(node_id):
                 "status": new_status,
             }
         ),
+        200,
+    )
+
+@nodes_bp.route("/<int:node_id>/heartbeat", methods=["POST"])
+def receive_heartbeat(node_id):
+    node = Node.query.get(node_id)
+    if not node:
+        return jsonify({"status": "error", "message": "Node not found"}), 404
+    
+    node.last_heartbeat = datetime.utcnow()
+    data.session.commit()
+    
+    return (
+        jsonify(
+            {
+            "status": "success",
+            "message": "Heartbeat received",
+            "next_heartbeat_in": node.heartbeat_interval
+            }
+        ), 
         200,
     )

@@ -22,6 +22,8 @@ class Node(data.Model):
     controller_status = data.Column(data.String(20), nullable=True)
     etcd_status = data.Column(data.String(20), nullable=True)
 
+    last_heartbeat = data.Column(data.DateTime)
+    heartbeat_interval = data.Column(data.Integer, default=30)
     pods = data.relationship("Pod", backref="node", lazy=True)
 
 
