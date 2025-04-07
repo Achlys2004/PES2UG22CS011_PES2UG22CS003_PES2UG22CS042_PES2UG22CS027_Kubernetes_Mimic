@@ -7,7 +7,6 @@ import docker
 
 pods_bp = Blueprint("pods", __name__)
 
-# Initialize Docker service
 docker_service = DockerService()
 
 
@@ -281,7 +280,6 @@ def delete_pod(pod_id):
         return jsonify({"error": "Pod not found"}), 404
 
     try:
-        # Stop and remove all containers in the pod
         for container in pod.containers:
             if container.docker_container_id:
                 docker_service.stop_container(container.docker_container_id)
