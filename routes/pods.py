@@ -124,11 +124,12 @@ def add_pod():
                 if config.config_type == "env":
                     env_vars[config.key] = config.value
 
-            volume_mounts = []
+            volume_mounts = {}
             for volume in new_pod.volumes:
-                volume_mounts.append(
-                    {volume.docker_volume_name: {"bind": volume.path, "mode": "rw"}}
-                )
+                volume_mounts[volume.docker_volume_name] = {
+                    "bind": volume.path,
+                    "mode": "rw",
+                }
 
             container_name = f"pod-{new_pod.id}-{container.name}"
             container_id = docker_service.create_container(
@@ -273,7 +274,7 @@ def delete_docker_container(container_name):
         return f"Error while deleting container '{container_name}': {str(e)}"
 
 
-@pods_bp.route("/pods/<int:pod_id>", methods=["DELETE"])
+@pods_bp.route("/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
     pod = Pod.query.get(pod_id)
     if not pod:

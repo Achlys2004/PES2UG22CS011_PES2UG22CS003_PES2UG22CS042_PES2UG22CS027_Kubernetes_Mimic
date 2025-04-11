@@ -51,16 +51,20 @@ python app.py
 #### Note: To redo the flask-migrate
 
 ```
-# Remove the existing migrations directory
+
+# 2. Remove the migrations folder
 rm -r migrations
 
-# Reinitialize migrations
+# 3. Reset the database tracking table
+mysql -u Aathil -p cluster_db -e "DROP TABLE IF EXISTS alembic_version;"
+
+# 4. Reinitialize migrations
 flask db init
 
-# Create a new migration
-flask db migrate -m "Initial migration"
+# 5. Create a new baseline migration
+flask db migrate -m "Reset migration baseline"
 
-# Apply the migration
+# 6. Apply the migration
 flask db upgrade
 ```
 

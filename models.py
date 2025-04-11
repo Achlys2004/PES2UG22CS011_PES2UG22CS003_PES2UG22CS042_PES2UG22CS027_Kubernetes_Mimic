@@ -23,8 +23,13 @@ class Node(data.Model):
     etcd_status = data.Column(data.String(20), nullable=True)
 
     last_heartbeat = data.Column(data.DateTime)
-    heartbeat_interval = data.Column(data.Integer, default=30)
+    heartbeat_interval = data.Column(data.Integer, default=60)  # 1 minute
     pods = data.relationship("Pod", backref="node", lazy=True)
+
+    max_heartbeat_interval = data.Column(data.Integer, default=90)  # 1.5 minutes
+    recovery_attempts = data.Column(data.Integer, default=0)
+    max_recovery_attempts = data.Column(data.Integer, default=3)
+    node_ip = data.Column(data.String(15), nullable=True)
 
 
 class Pod(data.Model):

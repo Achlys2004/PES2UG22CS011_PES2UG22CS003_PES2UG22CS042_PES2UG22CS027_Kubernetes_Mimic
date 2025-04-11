@@ -1,24 +1,42 @@
 from flask import Flask, jsonify
+import threading
+import time
+import requests
 
 app = Flask(__name__)
 
-node_state = {
-    "name": "node-1",
-    "cpu_cores_avail": 4,
-    "health_status": "healthy"
-}
+node_state = {"name": "node-1", "cpu_cores_avail": 4, "health_status": "healthy"}
+
+
 @app.route("/", methods=["GET"])
 def home():
     return "Kube-9 Node Simulator is running!"
+
 
 @app.route("/status", methods=["GET"])
 def status():
     return jsonify(node_state)
 
+
 @app.route("/simulate_failure", methods=["POST"])
 def simulate_failure():
     node_state["health_status"] = "unhealthy"
     return jsonify({"msg": "Node marked unhealthy"})
+
+
+def send_heartbeats():
+    while True:
+        try:
+            requests.post("http://localhost:5000/nodes/1/heartbeat")
+            time.sleep(15)  
+        except Exception as e:
+            print(f"Heartbeat failed: {str(e)}")
+
+
+# Start heartbeat thread
+heartbeat_thread = threading.Thread(target=send_heartbeats)
+heartbeat_thread.daemon = True
+heartbeat_thread.start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

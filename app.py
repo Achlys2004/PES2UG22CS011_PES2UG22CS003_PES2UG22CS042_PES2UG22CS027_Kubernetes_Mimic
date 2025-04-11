@@ -6,19 +6,28 @@ from routes.nodes import nodes_bp
 from routes.pods import pods_bp
 from flask_migrate import Migrate
 from services.monitor import DockerMonitor
+import logging
 
+# Configure Flask app
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 data.init_app(app)
-
 docker_monitor = DockerMonitor(app)
-
+app.config["DOCKER_MONITOR"] = docker_monitor
 migrate = Migrate(app, data)
 
+# Register blueprints
 app.register_blueprint(nodes_bp, url_prefix="/nodes")
 app.register_blueprint(pods_bp, url_prefix="/pods")
+
 
 @app.route("/")
 def home():
@@ -36,6 +45,9 @@ def test_db():
 
 
 if __name__ == "__main__":
+    print("Starting Kube-9 Container Orchestration System...")
+    print("Initializing monitors and services...")
     docker_monitor.start()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    print("Starting web server on http://localhost:5000/")
+    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
     docker_monitor.stop()

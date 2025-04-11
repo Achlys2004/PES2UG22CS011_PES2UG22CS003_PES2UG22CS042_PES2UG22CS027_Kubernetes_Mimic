@@ -41,7 +41,7 @@ class DockerService:
 
             return container.id
         except Exception as e:
-            self.logger.error(f"Error creating container: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             raise
 
     def start_container(self, container_id: str) -> bool:
@@ -51,7 +51,7 @@ class DockerService:
             container.start()
             return True
         except Exception as e:
-            self.logger.error(f"Error starting container: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
     def stop_container(self, container_id: str) -> bool:
@@ -61,7 +61,7 @@ class DockerService:
             container.stop(timeout=5)
             return True
         except Exception as e:
-            self.logger.error(f"Error stopping container: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
     def remove_container(self, container_id: str, force: bool = False) -> bool:
@@ -71,7 +71,7 @@ class DockerService:
             container.remove(force=force)
             return True
         except Exception as e:
-            self.logger.error(f"Error removing container: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
     def create_network(self, name: str) -> str:
@@ -80,7 +80,7 @@ class DockerService:
             network = self.client.networks.create(name, driver="bridge")
             return network.id
         except Exception as e:
-            self.logger.error(f"Error creating network: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             raise
 
     def remove_network(self, network_id: str) -> bool:
@@ -90,7 +90,7 @@ class DockerService:
             network.remove()
             return True
         except Exception as e:
-            self.logger.error(f"Error removing network: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
     def create_volume(self, name: str) -> str:
@@ -99,7 +99,7 @@ class DockerService:
             volume = self.client.volumes.create(name=name)
             return volume.name
         except Exception as e:
-            self.logger.error(f"Error creating volume: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             raise
 
     def remove_volume(self, volume_name: str) -> bool:
@@ -109,7 +109,7 @@ class DockerService:
             volume.remove()
             return True
         except Exception as e:
-            self.logger.error(f"Error removing volume: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
     def get_container_status(self, container_id: str) -> str:
@@ -118,5 +118,5 @@ class DockerService:
             container = self.client.containers.get(container_id)
             return container.status
         except Exception as e:
-            self.logger.error(f"Error getting container status: {str(e)}")
+            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return "unknown"
