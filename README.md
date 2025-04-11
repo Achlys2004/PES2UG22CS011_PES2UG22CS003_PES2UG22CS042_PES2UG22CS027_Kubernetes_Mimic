@@ -61,7 +61,7 @@ Kube-9 is a lightweight Kubernetes-like system designed to simulate container or
 rm -r migrations
 
 # Reset the database tracking table
-mysql -u Aathil -p cluster_db -e "DROP TABLE IF EXISTS alembic_version;"
+mysql -u <user> -p cluster_db -e "DROP TABLE IF EXISTS alembic_version;"
 
 # Reinitialize migrations
 flask db init
