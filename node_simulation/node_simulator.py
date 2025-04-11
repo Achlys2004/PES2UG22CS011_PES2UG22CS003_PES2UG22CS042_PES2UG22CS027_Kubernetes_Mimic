@@ -7,6 +7,9 @@ app = Flask(__name__)
 
 node_state = {"name": "node-1", "cpu_cores_avail": 4, "health_status": "healthy"}
 
+# Standardized timing interval
+HEARTBEAT_INTERVAL = 10  # seconds
+
 
 @app.route("/", methods=["GET"])
 def home():
@@ -28,7 +31,7 @@ def send_heartbeats():
     while True:
         try:
             requests.post("http://localhost:5000/nodes/1/heartbeat")
-            time.sleep(15)  
+            time.sleep(HEARTBEAT_INTERVAL)
         except Exception as e:
             print(f"Heartbeat failed: {str(e)}")
 

@@ -10,6 +10,12 @@ import ipaddress
 import logging
 from random import randint
 
+# Standardized timing intervals
+HEARTBEAT_INTERVAL = 10  # seconds
+MAX_HEARTBEAT_INTERVAL = 30  # seconds
+RECOVERY_INTERVAL = 20  # seconds
+RESCHEDULER_INTERVAL = 20  # seconds
+
 
 class DockerMonitor:
     def __init__(self, app=None):
@@ -132,31 +138,18 @@ class DockerMonitor:
             while self.running:
                 try:
                     current_time = datetime.now()
-
                     nodes = Node.query.filter(
                         Node.health_status.in_(["healthy", "idle"])
                     ).all()
 
                     for node in nodes:
                         threshold = current_time - timedelta(
-                            seconds=node.max_heartbeat_interval
+                            seconds=MAX_HEARTBEAT_INTERVAL
                         )
-
-                        # Log heartbeat status
-                        if node.last_heartbeat:
-                            time_since = (
-                                current_time - node.last_heartbeat
-                            ).total_seconds()
-                            self.logger.info(
-                                f"Node {node.name} (ID: {node.id}): Last heartbeat {time_since:.1f} seconds ago"
-                            )
-
-                        # Check if node is stale
                         if not node.last_heartbeat or node.last_heartbeat < threshold:
                             self.logger.warning(
                                 f"Node {node.name} (ID: {node.id}) marked as FAILED - Missing heartbeat"
                             )
-
                             node.health_status = "failed"
                             node.kubelet_status = "failed"
                             node.container_runtime_status = "failed"
@@ -172,53 +165,32 @@ class DockerMonitor:
                 except Exception as e:
                     self.logger.error(f"Error in node health monitor: {str(e)}")
 
-                time.sleep(20)
+                time.sleep(HEARTBEAT_INTERVAL)
 
     def attempt_node_recovery(self):
         with self.app.app_context():
             while self.running:
                 try:
                     failed_nodes = Node.query.filter_by(health_status="failed").all()
-
                     for node in failed_nodes:
                         self.logger.info(
                             f"Attempting recovery for node {node.name} (ID: {node.id})"
                         )
-
-                        if node.node_ip:
-                            try:
-                                response = requests.get(
-                                    f"http://{node.node_ip}:5000/status", timeout=5
-                                )
-
-                                if response.status_code == 200:
-                                    self.logger.info(
-                                        f"Node {node.name} responded to health check - Recovering"
-                                    )
-                                    self._recover_node(node)
-                                    continue
-                            except Exception as e:
-                                self.logger.debug(
-                                    f"Recovery attempt failed for node {node.id}: {str(e)}"
-                                )
-
                         node.recovery_attempts = (node.recovery_attempts or 0) + 1
-                        self.logger.info(
-                            f"Node {node.name} recovery attempt #{node.recovery_attempts}"
-                        )
 
                         if node.recovery_attempts >= (node.max_recovery_attempts or 5):
                             node.health_status = "permanently_failed"
                             self.logger.warning(
                                 f"Node {node.name} (ID: {node.id}) marked as permanently failed after {node.recovery_attempts} attempts"
                             )
+                        else:
+                            self._recover_node(node)
 
                     data.session.commit()
-
                 except Exception as e:
                     self.logger.error(f"Error in node recovery process: {str(e)}")
 
-                time.sleep(20)
+                time.sleep(RECOVERY_INTERVAL)
 
     def _recover_node(self, node):
         node.health_status = "healthy"
@@ -256,7 +228,6 @@ class DockerMonitor:
                         self.logger.info(
                             f"Found pod {pod.name} (ID: {pod.id}) on failed node - Scheduling for migration"
                         )
-
                         pod.health_status = "pending_reschedule"
                         data.session.commit()
 
@@ -278,14 +249,11 @@ class DockerMonitor:
                             self.logger.info(
                                 f"Rescheduling pod {pod.name} to node {new_node.name}"
                             )
-
                             pod_config = self.extract_pod_config(pod)
-
                             pod.health_status = "rescheduling"
                             data.session.commit()
 
                             new_pod = self._create_replacement_pod(pod_config, new_node)
-
                             pod.health_status = "rescheduled"
                             data.session.commit()
                             self.logger.info(
@@ -302,7 +270,7 @@ class DockerMonitor:
                 except Exception as e:
                     self.logger.error(f"Error in pod rescheduler: {str(e)}")
 
-                time.sleep(20)
+                time.sleep(RESCHEDULER_INTERVAL)
 
     def record_heartbeat(self, node_id, source="API"):
         """Record a heartbeat from a node"""

@@ -7,6 +7,8 @@ from routes.pods import pods_bp
 from flask_migrate import Migrate
 from services.monitor import DockerMonitor
 import logging
+import signal
+import sys
 
 # Configure Flask app
 app = Flask(__name__)
@@ -44,10 +46,21 @@ def test_db():
         return f"Database Connection failed: {str(e)}"
 
 
+def graceful_exit(signal, frame):
+    print("\nShutting down Kube-9 Container Orchestration System...")
+    docker_monitor.stop()
+    sys.exit(0)
+
+
+# Register signal handler
+signal.signal(signal.SIGINT, graceful_exit)
+
 if __name__ == "__main__":
     print("Starting Kube-9 Container Orchestration System...")
     print("Initializing monitors and services...")
     docker_monitor.start()
     print("Starting web server on http://localhost:5000/")
-    app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
-    docker_monitor.stop()
+    try:
+        app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
+    except KeyboardInterrupt:
+        graceful_exit(None, None)
