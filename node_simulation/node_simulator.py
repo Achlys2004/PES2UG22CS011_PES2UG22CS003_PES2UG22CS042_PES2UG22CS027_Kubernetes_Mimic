@@ -2,6 +2,8 @@ from flask import Flask, jsonify
 import threading
 import time
 import requests
+import signal
+import sys
 
 app = Flask(__name__)
 
@@ -36,7 +38,13 @@ def send_heartbeats():
             print(f"Heartbeat failed: {str(e)}")
 
 
-# Start heartbeat thread
+def graceful_exit(signal, frame):
+    print("\nShutting down Kube-9 Node Simulator...")
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, graceful_exit)
+
 heartbeat_thread = threading.Thread(target=send_heartbeats)
 heartbeat_thread.daemon = True
 heartbeat_thread.start()

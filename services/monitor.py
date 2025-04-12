@@ -11,8 +11,8 @@ import logging
 from random import randint
 
 # Standardized timing intervals
-HEARTBEAT_INTERVAL = 10  # seconds
-MAX_HEARTBEAT_INTERVAL = 30  # seconds
+HEARTBEAT_INTERVAL = 60  # seconds
+MAX_HEARTBEAT_INTERVAL = 90  # seconds
 RECOVERY_INTERVAL = 20  # seconds
 RESCHEDULER_INTERVAL = 20  # seconds
 
