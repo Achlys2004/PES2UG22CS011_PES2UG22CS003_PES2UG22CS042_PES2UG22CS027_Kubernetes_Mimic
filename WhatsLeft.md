@@ -38,27 +38,7 @@
 
 ---
 
-## ❌ 2. Major Missing Features
-
-| Feature | Status | Requirements |
-|:--------|:------:|:-------------|
-| **Services and Load Balancing** | ❌ Missing | - Service model to track service endpoints<br>- Load balancing algorithms (round-robin, least connections)<br>- Virtual IP allocation<br>- Service discovery mechanism<br>- Different service types (ClusterIP, NodePort, LoadBalancer) |
-| **Deployments for Scaling** | ❌ Missing | - ReplicaSet-like functionality<br>- Running multiple pod replicas<br>- Auto-scaling based on metrics<br>- Deployment strategies (RollingUpdate, Recreate) |
-| **Rolling Updates** | ❌ Missing | - Progressive update mechanism<br>- Version tracking for containers/pods<br>- Rollback functionality<br>- Update strategy configuration |
-| **Node Simulation Containers** | ❌ Missing | - Actual containers to simulate nodes instead of just database entries |
-| **Persistent Volume Claims** | ❌ Missing | - PVC management system<br>- Storage classes |
-| **Network Policy** | ❌ Missing | - Network policy enforcement<br>- Pod-to-pod communication rules |
-| **Resource Quotas** | ❌ Missing | - Resource limits and quotas by namespace |
-| **Authentication & RBAC** | ❌ Missing | - User authentication<br>- Role-based access control |
-| **Event Logging System** | ❌ Missing | - Comprehensive event logging<br>- Event querying |
-| **ConfigMaps and Secrets** | ❌ Missing | - Configuration management<br>- Sensitive data management |
-| **Ingress** | ❌ Missing | - Ingress controllers for external access |
-| **Horizontal Pod Autoscaling** | ❌ Missing | - Automatic scaling based on metrics |
-| **Custom Resource Definitions** | ❌ Missing | - Extensions to the API |
-
----
-
-## ⚠️ 3. Timing and Stability Improvements
+## ⚠️ 2. Timing and Stability Improvements
 
 | Issue | Status | Fix Required |
 |:------|:------:|:-------------|
@@ -69,10 +49,65 @@
 
 ---
 
-## 📝 4. Testing and Documentation
+## 📝 3. Testing and Documentation
 
 | Task | Status | Details |
 |:-----|:------:|:--------|
 | Test Coverage | ⚠️ Incomplete | Add tests for node recovery and pod rescheduling |
 | Integration Tests | ❌ Missing | Add tests for Docker operations |
 | API Documentation | ❌ Missing | Implement Swagger/OpenAPI documentation |
+
+---
+
+# Features Left to Implement in Kube-9
+
+Based on the project requirements, the following key features still need to be implemented:
+
+## 1. Node Simulation Containers
+- **Current Status**: Only database entries are created for nodes without actual containers
+- **Required**: Launch Docker containers to simulate physical nodes in the cluster
+- **Implementation Tasks**:
+  - Create Docker image for node simulation with required components (kubelet, container runtime)
+  - Implement automatic container deployment when nodes are registered
+  - Connect simulated nodes to the master node control plane
+
+## 2. Advanced Pod Scheduling Algorithms
+- **Current Status**: Basic filtering without specific algorithm implementations
+- **Required**: Implement the following scheduling strategies:
+  - First-Fit algorithm
+  - Best-Fit algorithm
+  - Worst-Fit algorithm
+- **Implementation Tasks**:
+  - Create a scheduling service with pluggable algorithms
+  - Allow algorithm selection through API/config
+
+## 3. Client Interface
+- **Current Status**: REST API exists but no dedicated user interface
+- **Required**: Build a command-line interface or web interface
+- **Implementation Tasks**:
+  - Develop CLI tool that wraps the API calls
+  - Or implement a basic web dashboard for cluster management
+  - Include monitoring and management capabilities
+
+## 4. Additional Enhancements
+- **Auto-scaling for Nodes**:
+  - Implement load metrics collection
+  - Create scaling policies and thresholds
+  - Automatically add/remove nodes based on cluster load
+
+- **Pod Resource Usage Monitoring**:
+  - Collect container resource metrics
+  - Implement visualization of resource utilization
+  - Set up alerting for resource constraints
+
+- **Network Policy Simulation**:
+  - Define network policy objects
+  - Implement policy enforcement between pods
+  - Test and validate isolation capabilities
+
+## Priority and Timeline
+1. **High Priority**: Node simulation containers and scheduling algorithms (core functionality)
+2. **Medium Priority**: Client interface implementation
+3. **Lower Priority**: Additional enhancements
+
+Each feature should be implemented incrementally with testing at each stage.
