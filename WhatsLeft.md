@@ -15,6 +15,9 @@
 | Heartbeat Initialization | ✅ Implemented | receive_heartbeat() endpoint accepts heartbeats |
 | Status Update | ✅ Implemented | Node status is updated in database |
 | Client Acknowledgment | ✅ Implemented | JSON response confirms node addition |
+
+| Feature | Status | Implementation Details |
+|:--------|:------:|:-----------------------|
 | **Pod Launch Process** | | |
 | Client Request | ✅ Implemented | POST /pods/ endpoint |
 | Resource Validation | ✅ Implemented | Checks for sufficient CPU resources |
@@ -23,6 +26,9 @@
 | Pod Deployment | ✅ Implemented | Creates pod, containers, networks, volumes in database and Docker |
 | Status Update | ✅ Implemented | Pod and container status tracking |
 | Client Notification | ✅ Implemented | Returns pod deployment details |
+
+| Feature | Status | Implementation Details |
+|:--------|:------:|:-----------------------|
 | **Health Monitoring Process** | | |
 | Periodic Heartbeats | ✅ Implemented | Heartbeat endpoint and node simulator |
 | Health Monitor Analysis | ✅ Implemented | monitor_node_health() analyzes heartbeats |
