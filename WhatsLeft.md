@@ -4,9 +4,9 @@
 
 ## 🚀 1. Core Features Status
 
+**Node Addition Process**
 | Feature | Status | Implementation Details |
 |:--------|:------:|:-----------------------|
-| **Node Addition Process** | | |
 | Resource Specification | ✅ Implemented | routes/nodes.py - add_node() accepts CPU cores and node type |
 | Container Launch | ❌ Missing | System doesn't launch actual containers to simulate physical nodes |
 | Node Registration | ✅ Implemented | add_node() registers nodes in database |
@@ -16,9 +16,9 @@
 | Status Update | ✅ Implemented | Node status is updated in database |
 | Client Acknowledgment | ✅ Implemented | JSON response confirms node addition |
 
+**Pod Launch Process**
 | Feature | Status | Implementation Details |
 |:--------|:------:|:-----------------------|
-| **Pod Launch Process** | | |
 | Client Request | ✅ Implemented | POST /pods/ endpoint |
 | Resource Validation | ✅ Implemented | Checks for sufficient CPU resources |
 | Node Selection | ✅ Implemented | Filter queries find suitable nodes |
@@ -27,9 +27,9 @@
 | Status Update | ✅ Implemented | Pod and container status tracking |
 | Client Notification | ✅ Implemented | Returns pod deployment details |
 
+**Health Monitoring Process**
 | Feature | Status | Implementation Details |
 |:--------|:------:|:-----------------------|
-| **Health Monitoring Process** | | |
 | Periodic Heartbeats | ✅ Implemented | Heartbeat endpoint and node simulator |
 | Health Monitor Analysis | ✅ Implemented | monitor_node_health() analyzes heartbeats |
 | Failure Detection | ✅ Implemented | Marks nodes as failed after missed heartbeats |
