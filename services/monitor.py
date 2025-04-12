@@ -134,6 +134,7 @@ class DockerMonitor:
                 time.sleep(20)
 
     def monitor_node_health(self):
+        """Monitor the health of nodes based on heartbeats"""
         with self.app.app_context():
             while self.running:
                 try:
@@ -143,10 +144,15 @@ class DockerMonitor:
                     ).all()
 
                     for node in nodes:
+                        # Skip nodes that haven't had their first heartbeat
+                        if not node.last_heartbeat:
+                            continue
+                        
                         threshold = current_time - timedelta(
-                            seconds=MAX_HEARTBEAT_INTERVAL
+                            seconds=node.max_heartbeat_interval or MAX_HEARTBEAT_INTERVAL
                         )
-                        if not node.last_heartbeat or node.last_heartbeat < threshold:
+                        
+                        if node.last_heartbeat < threshold:
                             self.logger.warning(
                                 f"Node {node.name} (ID: {node.id}) marked as FAILED - Missing heartbeat"
                             )

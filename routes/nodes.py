@@ -13,43 +13,22 @@ nodes_bp = Blueprint("nodes", __name__)
 
 # To add a new node
 @nodes_bp.route("/", methods=["POST"])
-def add_node():
+def create_node():
+    """Create a new node"""
     payload = request.get_json()
-    name = payload.get("name")
-    cpu_cores_avail = payload.get("cpu_cores_avail")
-    node_type = payload.get("node_type", "worker")
-
-    if not name:
-        return jsonify({"error": "Name is missing or incorrect"}), 400
-    elif not cpu_cores_avail:
-        return jsonify({"error": "Cpu core count is missing or incorrect"}), 400
-
-    if node_type not in ["master", "worker"]:
-        return jsonify({"error": "Node type must be either 'master' or 'worker'"}), 400
-
-    new_node = Node(
-        name=name,
-        cpu_cores_avail=cpu_cores_avail,
-        node_type=node_type,
-        kubelet_status="running",
-        container_runtime_status="running",
-        kube_proxy_status="running",
-        node_agent_status="running",
+    
+    node = Node(
+        name=payload["name"],
+        node_type=payload.get("node_type", "worker"),
+        cpu_cores_avail=payload["cpu_cores_avail"],
+        health_status="healthy",
+        last_heartbeat=datetime.now()  # Set initial heartbeat time
     )
-
-    if node_type == "master":
-        new_node.api_server_status = "running"
-        new_node.scheduler_status = "running"
-        new_node.controller_status = "running"
-        new_node.etcd_status = "running"
-
-    data.session.add(new_node)
+    
+    data.session.add(node)
     data.session.commit()
-
-    return (
-        jsonify({"message": f"{node_type.capitalize()} node added successfully!"}),
-        200,
-    )
+    
+    return jsonify({"id": node.id, "name": node.name}), 200
 
 
 # To list all nodes
@@ -354,47 +333,38 @@ def update_node_ip(node_id):
     )
 
 
-def send_heartbeats():
+def send_heartbeats(app):
     """Send heartbeat checks for all nodes in the system."""
-    app = current_app._get_current_object()  
-    
     while True:
         try:
-            with app.app_context():  
+            with app.app_context():
                 nodes = Node.query.all()
                 for node in nodes:
-                    if node.health_status in ["healthy", "idle"]: 
+                    if node.health_status in ["healthy", "idle"]:
                         try:
                             response = requests.post(
                                 f"http://localhost:5000/nodes/{node.id}/heartbeat"
                             )
                             if response.status_code == 200:
-                                print(
-                                    f"Heartbeat sent for Node {node.name} (ID: {node.id}), status: {response.status_code}"
-                                )
-                            else:
-                                print(
-                                    f"Failed to send heartbeat for Node {node.name} (ID: {node.id}), status: {response.status_code}"
+                                app.logger.info(
+                                    f"Heartbeat sent for Node {node.name} (ID: {node.id})"
                                 )
                         except requests.exceptions.RequestException as e:
-                            print(f"Request failed for node {node.id}: {str(e)}")
-                            
+                            app.logger.error(f"Request failed for node {node.id}: {str(e)}")
         except Exception as e:
             print(f"Error sending heartbeats: {str(e)}")
-        
         time.sleep(HEARTBEAT_INTERVAL)
 
 
 def init_heartbeat_thread(app):
     """Initialize the heartbeat thread with app context"""
-    heartbeat_thread = threading.Thread(target=send_heartbeats)
-    heartbeat_thread.daemon = True
-    heartbeat_thread.start()
-    return heartbeat_thread
+    thread = threading.Thread(target=send_heartbeats, args=(app,))
+    thread.daemon = True
+    thread.start()
+    return thread
 
-
-heartbeat_thread = None
 
 def init_routes(app):
+    """Initialize routes and start heartbeat thread"""
     global heartbeat_thread
     heartbeat_thread = init_heartbeat_thread(app)
