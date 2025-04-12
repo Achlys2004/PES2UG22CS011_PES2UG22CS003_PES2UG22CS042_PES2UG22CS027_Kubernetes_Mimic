@@ -2,6 +2,11 @@ from flask import Blueprint, request, jsonify
 from models import data, Node
 from datetime import datetime
 from flask import current_app
+import threading
+import time
+import requests
+
+HEARTBEAT_INTERVAL = 60  # Interval in seconds for sending heartbeats
 
 nodes_bp = Blueprint("nodes", __name__)
 
@@ -32,7 +37,6 @@ def add_node():
         node_agent_status="running",
     )
 
-    # Initialize master node components if applicable
     if node_type == "master":
         new_node.api_server_status = "running"
         new_node.scheduler_status = "running"
@@ -348,3 +352,49 @@ def update_node_ip(node_id):
         ),
         200,
     )
+
+
+def send_heartbeats():
+    """Send heartbeat checks for all nodes in the system."""
+    app = current_app._get_current_object()  
+    
+    while True:
+        try:
+            with app.app_context():  
+                nodes = Node.query.all()
+                for node in nodes:
+                    if node.health_status in ["healthy", "idle"]: 
+                        try:
+                            response = requests.post(
+                                f"http://localhost:5000/nodes/{node.id}/heartbeat"
+                            )
+                            if response.status_code == 200:
+                                print(
+                                    f"Heartbeat sent for Node {node.name} (ID: {node.id}), status: {response.status_code}"
+                                )
+                            else:
+                                print(
+                                    f"Failed to send heartbeat for Node {node.name} (ID: {node.id}), status: {response.status_code}"
+                                )
+                        except requests.exceptions.RequestException as e:
+                            print(f"Request failed for node {node.id}: {str(e)}")
+                            
+        except Exception as e:
+            print(f"Error sending heartbeats: {str(e)}")
+        
+        time.sleep(HEARTBEAT_INTERVAL)
+
+
+def init_heartbeat_thread(app):
+    """Initialize the heartbeat thread with app context"""
+    heartbeat_thread = threading.Thread(target=send_heartbeats)
+    heartbeat_thread.daemon = True
+    heartbeat_thread.start()
+    return heartbeat_thread
+
+
+heartbeat_thread = None
+
+def init_routes(app):
+    global heartbeat_thread
+    heartbeat_thread = init_heartbeat_thread(app)

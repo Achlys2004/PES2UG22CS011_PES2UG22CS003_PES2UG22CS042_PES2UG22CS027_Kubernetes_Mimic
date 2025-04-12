@@ -2,7 +2,7 @@ from flask import Flask
 from sqlalchemy import text
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
 from models import data
-from routes.nodes import nodes_bp
+from routes.nodes import nodes_bp, init_routes
 from routes.pods import pods_bp
 from flask_migrate import Migrate
 from services.monitor import DockerMonitor
@@ -10,7 +10,6 @@ import logging
 import signal
 import sys
 
-# Configure Flask app
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
@@ -26,10 +25,11 @@ docker_monitor = DockerMonitor(app)
 app.config["DOCKER_MONITOR"] = docker_monitor
 migrate = Migrate(app, data)
 
-# Register blueprints
 app.register_blueprint(nodes_bp, url_prefix="/nodes")
 app.register_blueprint(pods_bp, url_prefix="/pods")
 
+with app.app_context():
+    init_routes(app)
 
 @app.route("/")
 def home():
@@ -52,7 +52,6 @@ def graceful_exit(signal, frame):
     sys.exit(0)
 
 
-# Register signal handler
 signal.signal(signal.SIGINT, graceful_exit)
 
 if __name__ == "__main__":
