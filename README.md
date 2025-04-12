@@ -15,6 +15,18 @@ Kube-9 is a lightweight Kubernetes-like system designed to simulate container or
 
 ---
 
+## Pod Scheduling Algorithms
+
+Kube-9 uses the Best-Fit scheduling algorithm which places pods on nodes with the least available resources that still meet the pod's requirements. This maximizes cluster utilization by filling nodes more efficiently.
+
+When creating pods, the system will:
+
+1. Find all eligible nodes that have sufficient CPU resources and are healthy
+2. Select the node with the minimum available CPU resources (Best-Fit)
+3. If no eligible node is found, the pod creation will fail
+
+---
+
 ## Prerequisites
 
 - Python 3.12

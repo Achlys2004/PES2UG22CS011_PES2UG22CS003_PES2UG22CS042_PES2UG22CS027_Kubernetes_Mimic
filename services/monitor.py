@@ -232,13 +232,19 @@ class DockerMonitor:
                         data.session.commit()
 
                         try:
-                            new_node = Node.query.filter(
+                            eligible_nodes = Node.query.filter(
                                 Node.cpu_cores_avail >= pod.cpu_cores_req,
                                 Node.health_status == "healthy",
                                 Node.node_type == "worker",
                                 Node.kubelet_status == "running",
                                 Node.container_runtime_status == "running",
-                            ).first()
+                            ).all()
+
+                            new_node = None
+                            if eligible_nodes:
+                                new_node = min(
+                                    eligible_nodes, key=lambda n: n.cpu_cores_avail
+                                )
 
                             if not new_node:
                                 self.logger.warning(
@@ -247,7 +253,7 @@ class DockerMonitor:
                                 continue
 
                             self.logger.info(
-                                f"Rescheduling pod {pod.name} to node {new_node.name}"
+                                f"Rescheduling pod {pod.name} to node {new_node.name} using Best-Fit algorithm"
                             )
                             pod_config = self.extract_pod_config(pod)
                             pod.health_status = "rescheduling"

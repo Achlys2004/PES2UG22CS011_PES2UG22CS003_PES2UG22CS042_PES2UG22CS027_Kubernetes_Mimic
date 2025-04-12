@@ -28,13 +28,17 @@ def add_pod():
     elif not containers_data:
         return jsonify({"error": "At least one container is required"}), 400
 
-    node = Node.query.filter(
+    eligible_nodes = Node.query.filter(
         Node.cpu_cores_avail >= cpu_cores_req,
         Node.health_status == "healthy",
         Node.node_type == "worker",
         Node.kubelet_status == "running",
         Node.container_runtime_status == "running",
-    ).first()
+    ).all()
+
+    node = None
+    if eligible_nodes:
+        node = min(eligible_nodes, key=lambda n: n.cpu_cores_avail)
 
     if not node:
         return (
