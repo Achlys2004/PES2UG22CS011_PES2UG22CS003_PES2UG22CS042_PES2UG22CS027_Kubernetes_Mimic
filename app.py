@@ -49,6 +49,9 @@ def test_db():
 def graceful_exit(signal, frame):
     print("\nShutting down Kube-9 Container Orchestration System...")
     docker_monitor.stop()
+    with app.app_context():
+        data.session.remove()
+        data.engine.dispose()
     sys.exit(0)
 
 
@@ -57,7 +60,11 @@ signal.signal(signal.SIGINT, graceful_exit)
 if __name__ == "__main__":
     print("Starting Kube-9 Container Orchestration System...")
     print("Initializing monitors and services...")
-    docker_monitor.start()
+    try:
+        docker_monitor.start()
+        print("Docker monitor started successfully")
+    except Exception as e:
+        print(f"Failed to start Docker monitor: {str(e)}")
     print("Starting web server on http://localhost:5000/")
     try:
         app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)

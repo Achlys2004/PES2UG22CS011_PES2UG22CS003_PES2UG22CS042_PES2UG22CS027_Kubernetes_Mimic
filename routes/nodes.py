@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models import data, Node
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import current_app
 import threading
 import time
@@ -14,7 +14,6 @@ nodes_bp = Blueprint("nodes", __name__)
 # To add a new node
 @nodes_bp.route("/", methods=["POST"])
 def create_node():
-    """Create a new node"""
     payload = request.get_json()
     
     node = Node(
@@ -22,7 +21,7 @@ def create_node():
         node_type=payload.get("node_type", "worker"),
         cpu_cores_avail=payload["cpu_cores_avail"],
         health_status="healthy",
-        last_heartbeat=datetime.now()  # Set initial heartbeat time
+        last_heartbeat=datetime.now(timezone.utc)
     )
     
     data.session.add(node)
@@ -210,26 +209,17 @@ def update_component_status(node_id):
 
 
 @nodes_bp.route("/<int:node_id>/heartbeat", methods=["POST"])
-def receive_heartbeat(node_id):
-
-    node = Node.query.get(node_id)
-    if not node:
-        return jsonify({"status": "error", "message": "Node not found"}), 404
-
-    # Access docker_monitor from current_app
-    docker_monitor = current_app.config.get("DOCKER_MONITOR")
-    docker_monitor.record_heartbeat(node_id, source="API")
-
-    return (
-        jsonify(
-            {
-                "status": "success",
-                "message": "Heartbeat received",
-                "next_heartbeat_in": node.heartbeat_interval,
-            }
-        ),
-        200,
-    )
+def update_node_heartbeat(node_id):
+    try:
+        node = Node.query.get_or_404(node_id)
+        node.update_heartbeat()
+        data.session.commit()
+        current_app.logger.info(f"Heartbeat successfully updated for Node {node.name} (ID: {node.id})")
+        return jsonify({"message": "Heartbeat updated successfully"})
+    except Exception as e:
+        current_app.logger.error(f"Error updating heartbeat for Node {node_id}: {str(e)}")
+        data.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 @nodes_bp.route("/<int:node_id>", methods=["GET"])

@@ -4,7 +4,7 @@ from flask import current_app
 from models import data, Container, Pod, Node, Volume, ConfigItem
 from services.docker_service import DockerService
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 import ipaddress
 import logging
@@ -144,8 +144,7 @@ class DockerMonitor:
                     ).all()
 
                     for node in nodes:
-                        # Skip nodes that haven't had their first heartbeat
-                        if not node.last_heartbeat:
+                        if node.last_heartbeat is None:
                             continue
                         
                         threshold = current_time - timedelta(
@@ -164,7 +163,7 @@ class DockerMonitor:
                             if node.node_type == "master":
                                 node.api_server_status = "failed"
                                 node.scheduler_status = "failed"
-                                node.controller_status = "failed"
+                                node.controller_status = "failed" 
                                 node.etcd_status = "failed"
 
                     data.session.commit()
@@ -290,23 +289,22 @@ class DockerMonitor:
             node = Node.query.get(node_id)
             if node:
                 now = datetime.now()
-
-                time_diff = None
-                if node.last_heartbeat:
-                    time_diff = (now - node.last_heartbeat).total_seconds()
-
+                
+                if node.last_heartbeat is None:
+                    node.last_heartbeat = now
+                    data.session.commit()
+                    self.logger.info(
+                        f"Initial heartbeat received from Node {node.name} (ID: {node.id})"
+                    )
+                    return True
+                    
+                time_diff = (now - node.last_heartbeat).total_seconds()
                 node.last_heartbeat = now
                 data.session.commit()
 
-                if time_diff:
-                    self.logger.info(
-                        f"Heartbeat received from Node {node.name} (ID: {node.id}) - Interval: {time_diff:.1f}s"
-                    )
-                else:
-                    self.logger.info(
-                        f"First heartbeat received from Node {node.name} (ID: {node.id})"
-                    )
-
+                self.logger.info(
+                    f"Heartbeat received from Node {node.name} (ID: {node.id}) - Interval: {time_diff:.1f}s"
+                )
                 return True
             else:
                 self.logger.warning(
@@ -486,3 +484,17 @@ class DockerMonitor:
             raise
 
         return new_pod
+
+    def check_node_health(self, node):
+        current_time = datetime.now(timezone.utc)
+        interval = node.calculate_heartbeat_interval(current_time)
+        
+        # Add buffer time to prevent false positives
+        grace_period = 5  # 5 seconds grace period
+        
+        if interval > node.max_heartbeat_interval + grace_period:
+            if node.health_status != "failed":
+                self.logger.warning(f"Node {node.name} (ID: {node.id}) marked as FAILED - Missing heartbeat for {interval:.1f}s")
+                node.health_status = "failed"
+                node.recovery_attempts += 1
+                self.db.session.commit()
