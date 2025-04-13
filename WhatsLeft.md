@@ -43,8 +43,7 @@
 | Issue                            |     Status      | Fix Required                                                           |
 | :------------------------------- | :-------------: | :--------------------------------------------------------------------- |
 | Inconsistent Heartbeat Intervals |    ✅ Fixed     | Standardized intervals between monitor.py and node_simulator.py to 60s |
-| Hardcoded Node IDs               | ⚠️ Needs Fixing | Make node IDs configurable in node simulator                           |
-| Graceful Shutdown                | ⚠️ Needs Fixing | Improve handling of CTRL+C and other termination signals               |
+| Graceful Shutdown                |  ✅ Fixed       | Improve handling of CTRL+C and other termination signals               |
 | Error Handling                   | ⚠️ Needs Fixing | Add more comprehensive error handling for API and Docker operations    |
 
 ---
