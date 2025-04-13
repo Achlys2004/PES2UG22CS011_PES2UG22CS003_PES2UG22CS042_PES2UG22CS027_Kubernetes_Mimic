@@ -32,8 +32,6 @@ class Node(data.Model):
     max_heartbeat_interval = data.Column(data.Integer, default=90)  # 1.5 minutes
     recovery_attempts = data.Column(data.Integer, default=0)
     max_recovery_attempts = data.Column(data.Integer, default=3)
-    node_ip = data.Column(data.String(15), nullable=True)
-
 
     def __init__(self, **kwargs):
         super(Node, self).__init__(**kwargs)
@@ -41,15 +39,25 @@ class Node(data.Model):
         self.health_status = "healthy"
 
     def update_heartbeat(self):
+        """Update node heartbeat without nested transaction"""
         try:
-            with data.session.begin_nested():
-                self.last_heartbeat = datetime.now(timezone.utc)
-                self.health_status = "healthy"
-                self.recovery_attempts = 0
-                self.heartbeat_retries = 0
+            self.last_heartbeat = datetime.now(timezone.utc)
+            self.health_status = "healthy"
+
+            self.kubelet_status = "running"
+            self.container_runtime_status = "running"
+            self.kube_proxy_status = "running"
+            self.node_agent_status = "running"
+
+            if self.node_type == "master":
+                self.api_server_status = "running"
+                self.scheduler_status = "running"
+                self.controller_status = "running"
+                self.etcd_status = "running"
+            data.session.commit()
         except Exception:
-            self.heartbeat_retries += 1
-            self.backoff_interval *= 2  # Exponential backoff
+            data.session.rollback()
+            raise
 
     def calculate_heartbeat_interval(self, current_time):
         if self.last_heartbeat is None:

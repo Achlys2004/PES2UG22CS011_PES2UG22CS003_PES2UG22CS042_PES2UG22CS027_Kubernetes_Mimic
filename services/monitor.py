@@ -133,39 +133,41 @@ class DockerMonitor:
         with self.app.app_context():
             while self.running:
                 try:
+                    data.session.expire_all()
+
                     current_time = datetime.now(timezone.utc)
+                    if (
+                        current_time - self.startup_time
+                    ).total_seconds() < self.STARTUP_GRACE_PERIOD:
+                        time.sleep(5)
+                        continue
 
                     nodes = Node.query.filter(
-                        Node.health_status.in_(["healthy", "idle"])
+                        Node.health_status != "permanently_failed"
                     ).all()
 
                     for node in nodes:
                         if node.last_heartbeat is None:
                             continue
+                        data.session.refresh(node)
 
                         last_heartbeat = node.last_heartbeat
                         if last_heartbeat.tzinfo is None:
                             last_heartbeat = last_heartbeat.replace(tzinfo=timezone.utc)
 
-                        threshold = current_time - timedelta(
-                            seconds=(node.max_heartbeat_interval + 5)
+                        interval = (current_time - last_heartbeat).total_seconds()
+                        self.logger.debug(
+                            f"Node {node.name} heartbeat interval: {interval:.1f}s (threshold: {node.max_heartbeat_interval + 5}s)"
                         )
-
-                        if last_heartbeat < threshold:
+                        if (
+                            interval > node.max_heartbeat_interval + 15
+                            and node.health_status == "healthy"
+                        ):
                             self.logger.warning(
-                                f"Node {node.name} (ID: {node.id}) marked as FAILED - Missing heartbeat"
+                                f"Node {node.name} (ID: {node.id}) marked as FAILED - "
+                                f"Missing heartbeat for {interval:.1f}s"
                             )
                             node.health_status = "failed"
-                            node.kubelet_status = "failed"
-                            node.container_runtime_status = "failed"
-                            node.kube_proxy_status = "failed"
-
-                            if node.node_type == "master":
-                                node.api_server_status = "failed"
-                                node.scheduler_status = "failed"
-                                node.controller_status = "failed"
-                                node.etcd_status = "failed"
-
                             data.session.commit()
 
                 except Exception as e:
@@ -179,7 +181,6 @@ class DockerMonitor:
         with self.app.app_context():
             while self.running:
                 try:
-                    # Query for failed nodes that haven't exceeded max recovery attempts
                     failed_nodes = Node.query.filter(
                         Node.health_status == "failed",
                         (Node.recovery_attempts < Node.max_recovery_attempts),
@@ -230,22 +231,31 @@ class DockerMonitor:
                 time.sleep(RECOVERY_INTERVAL)
 
     def recover_node(self, node):
-        node.health_status = "healthy"
-        node.recovery_attempts = 0
-        node.last_heartbeat = datetime.now(timezone.utc)
-        node.kubelet_status = "running"
-        node.container_runtime_status = "running"
-        node.kube_proxy_status = "running"
-        node.node_agent_status = "running"
+        """Attempt to recover a failed node"""
+        try:
+            node.health_status = "healthy"
+            node.last_heartbeat = datetime.now(timezone.utc)
+            node.kubelet_status = "running"
+            node.container_runtime_status = "running"
+            node.kube_proxy_status = "running"
+            node.node_agent_status = "running"
 
-        if node.node_type == "master":
-            node.api_server_status = "running"
-            node.scheduler_status = "running"
-            node.controller_status = "running"
-            node.etcd_status = "running"
+            if node.node_type == "master":
+                node.api_server_status = "running"
+                node.scheduler_status = "running"
+                node.controller_status = "running"
+                node.etcd_status = "running"
 
-        data.session.commit()
-        self.logger.info(f"Node {node.name} (ID: {node.id}) successfully recovered")
+            data.session.commit()
+            self.logger.info(f"Node {node.name} (ID: {node.id}) successfully recovered")
+            return True
+        except Exception as e:
+            data.session.rollback()
+            self.logger.error(f"Failed to recover node {node.name}: {str(e)}")
+            with data.session.begin():
+                node.recovery_attempts += 1
+                data.session.commit()
+            return False
 
     def reschedule_pods(self):
         """Reschedule pods from failed nodes to healthy ones"""
@@ -554,10 +564,3 @@ class DockerMonitor:
         except Exception as e:
             self.logger.error(f"Resource verification failed: {str(e)}")
             return False
-
-    def assign_node_ip(self, node):
-        if not node.node_ip:
-            base_ip = "10.0.0.0"
-            network = ipaddress.ip_network(f"{base_ip}/16")
-            node.node_ip = str(random.choice(list(network.hosts())))
-            data.session.commit()

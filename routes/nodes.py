@@ -300,61 +300,30 @@ def update_node_thresholds(node_id):
     )
 
 
-@nodes_bp.route("/<int:node_id>/ip", methods=["PATCH"])
-def update_node_ip(node_id):
-    payload = request.get_json()
-    node_ip = payload.get("node_ip")
-
-    node = Node.query.get(node_id)
-    if not node:
-        return jsonify({"status": "error", "message": "Node not found"}), 404
-
-    if not node_ip:
-        return jsonify({"status": "error", "message": "Missing node_ip"}), 400
-
-    node.node_ip = node_ip
-    data.session.commit()
-
-    return (
-        jsonify(
-            {
-                "message": "Node IP updated successfully",
-                "node_id": node.id,
-                "node_ip": node.node_ip,
-            }
-        ),
-        200,
-    )
-
-
 def send_heartbeats(app):
     """Send heartbeat checks for all nodes in the system."""
     while True:
-        last_run = time.time()  # Record start time
+        last_run = time.time()
         try:
             with app.app_context():
-                nodes = Node.query.all()
+                nodes = Node.query.all()  # Send to ALL nodes
                 for node in nodes:
-                    if node.health_status in ["healthy", "idle"]:
-                        try:
-                            response = requests.post(
-                                f"http://localhost:5000/nodes/{node.id}/heartbeat"
+                    try:
+                        response = requests.post(
+                            f"http://localhost:5000/nodes/{node.id}/heartbeat"
+                        )
+                        if response.status_code == 200:
+                            app.logger.info(
+                                f"Heartbeat sent for Node {node.name} (ID: {node.id})"
                             )
-                            if response.status_code == 200:
-                                app.logger.info(
-                                    f"Heartbeat sent for Node {node.name} (ID: {node.id})"
-                                )
-                        except requests.exceptions.RequestException as e:
-                            app.logger.error(
-                                f"Request failed for node {node.id}: {str(e)}"
-                            )
+                    except requests.exceptions.RequestException as e:
+                        app.logger.error(f"Request failed for node {node.id}: {str(e)}")
         except Exception as e:
             print(f"Error sending heartbeats: {str(e)}")
 
+        # Maintain consistent interval
         elapsed = time.time() - last_run
-        sleep_time = max(
-            0.1, HEARTBEAT_INTERVAL - elapsed
-        )
+        sleep_time = max(0.1, HEARTBEAT_INTERVAL - elapsed)
         time.sleep(sleep_time)
 
 
