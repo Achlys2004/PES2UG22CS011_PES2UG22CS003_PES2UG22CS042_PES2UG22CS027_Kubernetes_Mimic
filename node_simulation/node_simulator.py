@@ -6,8 +6,7 @@ app = Flask(__name__)
 
 node_state = {"name": "node-1", "cpu_cores_avail": 4, "health_status": "healthy"}
 
-HEARTBEAT_INTERVAL = 60  # seconds (was 10 seconds)
-
+HEARTBEAT_INTERVAL = 60 
 
 @app.route("/", methods=["GET"])
 def home():

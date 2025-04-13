@@ -15,18 +15,18 @@ nodes_bp = Blueprint("nodes", __name__)
 @nodes_bp.route("/", methods=["POST"])
 def create_node():
     payload = request.get_json()
-    
+
     node = Node(
         name=payload["name"],
         node_type=payload.get("node_type", "worker"),
         cpu_cores_avail=payload["cpu_cores_avail"],
         health_status="healthy",
-        last_heartbeat=datetime.now(timezone.utc)
+        last_heartbeat=datetime.now(timezone.utc),
     )
-    
+
     data.session.add(node)
     data.session.commit()
-    
+
     return jsonify({"id": node.id, "name": node.name}), 200
 
 
@@ -214,10 +214,14 @@ def update_node_heartbeat(node_id):
         node = Node.query.get_or_404(node_id)
         node.update_heartbeat()
         data.session.commit()
-        current_app.logger.info(f"Heartbeat successfully updated for Node {node.name} (ID: {node.id})")
+        current_app.logger.info(
+            f"Heartbeat successfully updated for Node {node.name} (ID: {node.id})"
+        )
         return jsonify({"message": "Heartbeat updated successfully"})
     except Exception as e:
-        current_app.logger.error(f"Error updating heartbeat for Node {node_id}: {str(e)}")
+        current_app.logger.error(
+            f"Error updating heartbeat for Node {node_id}: {str(e)}"
+        )
         data.session.rollback()
         return jsonify({"error": str(e)}), 500
 
@@ -326,6 +330,7 @@ def update_node_ip(node_id):
 def send_heartbeats(app):
     """Send heartbeat checks for all nodes in the system."""
     while True:
+        last_run = time.time()  # Record start time
         try:
             with app.app_context():
                 nodes = Node.query.all()
@@ -340,10 +345,17 @@ def send_heartbeats(app):
                                     f"Heartbeat sent for Node {node.name} (ID: {node.id})"
                                 )
                         except requests.exceptions.RequestException as e:
-                            app.logger.error(f"Request failed for node {node.id}: {str(e)}")
+                            app.logger.error(
+                                f"Request failed for node {node.id}: {str(e)}"
+                            )
         except Exception as e:
             print(f"Error sending heartbeats: {str(e)}")
-        time.sleep(HEARTBEAT_INTERVAL)
+
+        elapsed = time.time() - last_run
+        sleep_time = max(
+            0.1, HEARTBEAT_INTERVAL - elapsed
+        )
+        time.sleep(sleep_time)
 
 
 def init_heartbeat_thread(app):

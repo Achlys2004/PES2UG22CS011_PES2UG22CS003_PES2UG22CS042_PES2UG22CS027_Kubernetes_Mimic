@@ -264,20 +264,6 @@ def list_pods():
 
     return jsonify(result), 200
 
-
-def delete_docker_container(container_name):
-    try:
-        client = docker.from_env()
-        container = client.containers.get(container_name)
-        container.stop()
-        container.remove()
-        return f"Container '{container_name}' stopped and removed successfully."
-    except docker.errors.NotFound:
-        return f"Container '{container_name}' not found."
-    except Exception as e:
-        return f"Error while deleting container '{container_name}': {str(e)}"
-
-
 @pods_bp.route("/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
     pod = Pod.query.get(pod_id)
