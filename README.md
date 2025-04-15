@@ -114,6 +114,8 @@ flask db upgrade
 
    ```bash
    python app.py
+   open a new terminal and run:
+   streamlit run dashboard.py
    ```
 
 2. Access the API at:
