@@ -6,12 +6,33 @@ Kube-9 is a lightweight Kubernetes-like system designed to simulate container or
 
 ## Features
 
-1. **Node Management**: Add, update, and monitor worker and master nodes.
+1. **Node Management**: Add, update, and monitor worker and master nodes, each running as a Docker container to simulate physical nodes.
 2. **Pod Management**: Create, delete, and monitor pods with containers, volumes, and configurations.
-3. **Docker Integration**: Automatically manage Docker containers, networks, and volumes.
-4. **Health Monitoring**: Monitor node and pod health with heartbeat mechanisms.
-5. **Node Recovery**: Attempt recovery of failed nodes.
-6. **Pod Rescheduling**: Reschedule pods from failed nodes to healthy ones.
+3. **Docker Integration**: Automatically manage Docker containers, networks, and volumes for both nodes and pods.
+4. **Pod Tracking**: Each node maintains an array of pod IDs it hosts to simulate pod deployment.
+5. **Health Monitoring**: Monitor node and pod health with heartbeat mechanisms sent from node containers.
+6. **Node Recovery**: Attempt recovery of failed nodes by restarting their containers.
+7. **Pod Rescheduling**: Automatically reschedule pods from failed nodes to healthy ones.
+
+---
+
+## Architecture Overview
+
+Kube-9 simulates a Kubernetes-like cluster with these components:
+
+1. **API Server**: Central management point for the cluster (runs in the main application)
+2. **Node Manager**: Handles node registration, health monitoring, and management
+3. **Pod Scheduler**: Places pods on appropriate nodes based on resource requirements
+4. **Health Monitor**: Tracks node health through heartbeats and detects failures
+5. **Node Containers**: Docker containers that simulate physical nodes in the cluster
+6. **Pods**: Represented as entries in node pod arrays and as Docker containers
+
+Each node in the cluster is represented by a Docker container running the node simulator, which:
+
+- Maintains its own array of pod IDs
+- Periodically sends heartbeats to the API server
+- Reports its resource usage and status
+- Receives instructions to add/remove pods
 
 ---
 

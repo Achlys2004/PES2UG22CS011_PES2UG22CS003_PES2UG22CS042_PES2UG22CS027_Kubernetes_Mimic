@@ -8,7 +8,7 @@
 | Feature | Status | Implementation Details |
 |:--------|:------:|:-----------------------|
 | Resource Specification | ✅ Implemented | routes/nodes.py - add_node() accepts CPU cores and node type |
-| Container Launch | ❌ Missing | System doesn't launch actual containers to simulate physical nodes |
+| Container Launch | ✅ Implemented | System now launches Docker containers to simulate physical nodes |
 | Node Registration | ✅ Implemented | add_node() registers nodes in database |
 | Node Manager Processing | ✅ Implemented | API Server assigns unique IDs and registers node details |
 | Resource Allocation | ✅ Implemented | cpu_cores_avail tracked in Node model |
@@ -23,14 +23,14 @@
 | Resource Validation | ✅ Implemented | Checks for sufficient CPU resources |
 | Node Selection | ✅ Implemented | Best-Fit algorithm finds suitable nodes |
 | Resource Reservation | ✅ Implemented | Updates node.cpu_cores_avail |
-| Pod Deployment | ✅ Implemented | Creates pod, containers, networks, volumes in database and Docker |
+| Pod Deployment | ✅ Implemented | Creates pod entries in node's pod ID array list |
 | Status Update | ✅ Implemented | Pod and container status tracking |
 | Client Notification | ✅ Implemented | Returns pod deployment details |
 
 **Health Monitoring Process**
 | Feature | Status | Implementation Details |
 |:--------|:------:|:-----------------------|
-| Periodic Heartbeats | ✅ Implemented | Heartbeat endpoint and node simulator |
+| Periodic Heartbeats | ✅ Implemented | Node containers send heartbeats to API server |
 | Health Monitor Analysis | ✅ Implemented | monitor_node_health() analyzes heartbeats |
 | Failure Detection | ✅ Implemented | Marks nodes as failed after missed heartbeats |
 | Recovery Actions | ✅ Implemented | reschedule_pods() moves pods from failed nodes |
@@ -43,7 +43,7 @@
 | Issue                            |     Status      | Fix Required                                                           |
 | :------------------------------- | :-------------: | :--------------------------------------------------------------------- |
 | Inconsistent Heartbeat Intervals |    ✅ Fixed     | Standardized intervals between monitor.py and node_simulator.py to 60s |
-| Graceful Shutdown                |  ✅ Fixed       | Improve handling of CTRL+C and other termination signals               |
+| Graceful Shutdown                |    ✅ Fixed     | Improve handling of CTRL+C and other termination signals               |
 | Error Handling                   | ⚠️ Needs Fixing | Add more comprehensive error handling for API and Docker operations    |
 
 ---
@@ -62,24 +62,7 @@
 
 Based on the project requirements and current codebase status, the following features still need to be implemented:
 
-## 1. Node Simulation Containers
-
-- **Current Status**: Basic simulator exists but lacks full representation of Kubernetes node components
-- **Required**: Enhance Docker containers to more accurately simulate physical nodes in the cluster
-- **Implementation Tasks**:
-  - Enhance Docker image for node simulation with required components (kubelet, container runtime)
-  - Implement automatic container deployment when nodes are registered
-  - Connect simulated nodes to the master node control plane
-
-## 2. Advanced Pod Scheduling Algorithms
-
-- **Current Status**: ✅ Implemented
-- **Details**:
-  - Best-Fit algorithm now selects nodes with minimum available resources that meet requirements
-  - Code uses min(eligible_nodes, key=lambda n: n.cpu_cores_avail) to find optimal placement
-  - This helps maximize cluster utilization by filling nodes more efficiently
-
-## 3. Client Interface
+## 1. Client Interface
 
 - **Current Status**: REST API exists but no dedicated user interface
 - **Required**: Build a command-line interface or web interface
@@ -88,7 +71,7 @@ Based on the project requirements and current codebase status, the following fea
   - Or implement a basic web dashboard for cluster management
   - Include monitoring and management capabilities
 
-## 4. Additional Enhancements
+## 2. Additional Enhancements
 
 - **Auto-scaling for Nodes**:
 
@@ -109,7 +92,7 @@ Based on the project requirements and current codebase status, the following fea
 
 ## Priority and Timeline
 
-1. **Medium Priority**: Enhancing node simulation containers
+1. **High Priority**: Comprehensive error handling across the system
 2. **Medium Priority**: Client interface implementation
 3. **Lower Priority**: Additional enhancements
 
