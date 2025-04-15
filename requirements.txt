@@ -23,6 +23,9 @@ requests==2.31.0        # For HTTP requests
 ipaddress==1.0.23       # For IP address handling
 PyYAML==6.0.1          # For configuration files
 
+# UI Dashboard
+streamlit==1.32.0
+
 # Development Tools
 black==23.7.0           # Code formatting
 flake8==6.1.0           # Linting

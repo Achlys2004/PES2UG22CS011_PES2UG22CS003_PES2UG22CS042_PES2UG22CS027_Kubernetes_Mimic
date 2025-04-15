@@ -162,9 +162,47 @@ flask db upgrade
    - **Method**: GET
    - **URL**: `http://localhost:5000/nodes/`
 
-4. **Check Node Health**
+4. **Get Node Details**
+
+   - **Method**: GET
+   - **URL**: `http://localhost:5000/nodes/1`
+     _(Replace `1` with actual node ID)_
+
+5. **Check Node Health**
+
    - **Method**: GET
    - **URL**: `http://localhost:5000/nodes/health`
+
+6. **Delete Node**
+
+   - **Method**: DELETE
+   - **URL**: `http://localhost:5000/nodes/1`
+     _(Replace `1` with actual node ID)_
+
+7. **Simulate Node Failure**
+
+   - **Method**: POST
+   - **URL**: `http://localhost:5000/nodes/1/simulate/failure`
+     _(Replace `1` with actual node ID)_
+
+8. **Send Node Heartbeat**
+
+   - **Method**: POST
+   - **URL**: `http://localhost:5000/nodes/1/heartbeat`
+   - **Body**:
+     ```json
+     {
+       "pod_ids": [1, 2],
+       "cpu_cores_avail": 2,
+       "health_status": "healthy",
+       "components": {
+         "kubelet": "running",
+         "container_runtime": "running",
+         "kube_proxy": "running",
+         "node_agent": "running"
+       }
+     }
+     ```
 
 #### Pod Operations
 
@@ -188,21 +226,49 @@ flask db upgrade
      }
      ```
 
-2. **Create a Pod with Volume and Config**
+2. **Create a Multi-Container Pod**
 
    - **Method**: POST
    - **URL**: `http://localhost:5000/pods/`
    - **Body**:
      ```json
      {
-       "name": "web_app_1",
+       "name": "web-app",
+       "cpu_cores_req": 2,
+       "containers": [
+         {
+           "name": "web",
+           "image": "nginx:latest",
+           "cpu_req": 1.0,
+           "memory_req": 256
+         },
+         {
+           "name": "cache",
+           "image": "redis:latest",
+           "cpu_req": 0.5,
+           "memory_req": 128
+         }
+       ]
+     }
+     ```
+
+3. **Create a Pod with Volumes and Config**
+
+   - **Method**: POST
+   - **URL**: `http://localhost:5000/pods/`
+   - **Body**:
+     ```json
+     {
+       "name": "web-app-config",
        "cpu_cores_req": 2,
        "containers": [
          {
            "name": "web",
            "image": "httpd:latest",
            "cpu_req": 1.0,
-           "memory_req": 512
+           "memory_req": 512,
+           "command": "/bin/sh",
+           "args": "-c 'httpd-foreground'"
          }
        ],
        "volumes": [
@@ -219,27 +285,39 @@ flask db upgrade
            "type": "env",
            "key": "ENV_TYPE",
            "value": "production"
+         },
+         {
+           "name": "secret-config",
+           "type": "secret",
+           "key": "API_KEY",
+           "value": "secret123"
          }
        ]
      }
      ```
 
-3. **List All Pods**
+4. **List All Pods**
 
    - **Method**: GET
    - **URL**: `http://localhost:5000/pods/`
 
-4. **Check Pod Health**
+5. **Get Pod Details**
 
-   - **Method**: GET  
-     **URL**: `http://localhost:5000/pods/1/health`  
-     _(Replace `1` with the actual pod ID.)_
+   - **Method**: GET
+   - **URL**: `http://localhost:5000/pods/1`
+     _(Replace `1` with actual pod ID)_
 
-5. **Delete a Pod**:
+6. **Check Pod Health**
 
-   - **Method**: DELETE  
-     **URL**: `http://localhost:5000/pods/1`  
-     _(Replace `1` with the actual pod ID.)_
+   - **Method**: GET
+   - **URL**: `http://localhost:5000/pods/1/health`
+     _(Replace `1` with actual pod ID)_
+
+7. **Delete a Pod**
+
+   - **Method**: DELETE
+   - **URL**: `http://localhost:5000/pods/1`
+     _(Replace `1` with actual pod ID)_
 
 ---
 

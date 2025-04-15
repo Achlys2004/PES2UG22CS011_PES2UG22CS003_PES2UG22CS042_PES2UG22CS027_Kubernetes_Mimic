@@ -87,6 +87,19 @@ def home():
 def status():
     return jsonify(node_state)
 
+@app.route("/api/update_node_id", methods=["POST"])
+def update_node_id():
+    """Update node ID after database registration"""
+    data = request.get_json()
+    if "node_id" in data:
+        global NODE_ID
+        NODE_ID = str(data["node_id"])
+        node_state["id"] = NODE_ID
+        logger.info(f"Updated node ID to {NODE_ID}")
+        return jsonify({"message": f"Node ID updated to {NODE_ID}"}), 200
+    else:
+        return jsonify({"error": "Missing node_id"}), 400
+
 @app.route("/pods", methods=["GET"])
 def get_pods():
     return jsonify({"pod_ids": node_state["pod_ids"]})

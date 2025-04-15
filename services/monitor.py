@@ -87,18 +87,18 @@ class DockerMonitor:
     def stop(self):
         """Stop all monitoring threads"""
         self.running = False
-        
+
         threads = [
             self.container_thread,
             self.health_thread,
             self.recovery_thread,
-            self.reschedule_thread
+            self.reschedule_thread,
         ]
-        
+
         for thread in threads:
             if thread and thread.is_alive():
                 thread.join(timeout=5)
-                
+
         self.logger.info("Kube-9 monitor stopped")
 
     def monitor_containers(self):
@@ -164,7 +164,7 @@ class DockerMonitor:
                     for node in nodes:
                         if node.last_heartbeat is None:
                             continue
-                        
+
                         data.session.refresh(node)
 
                         last_heartbeat = node.last_heartbeat
@@ -172,7 +172,7 @@ class DockerMonitor:
                             last_heartbeat = last_heartbeat.replace(tzinfo=timezone.utc)
 
                         interval = (current_time - last_heartbeat).total_seconds()
-                        
+
                         # Check node Docker container status
                         if node.docker_container_id:
                             container_status = self.docker_service.get_container_status(
@@ -187,9 +187,12 @@ class DockerMonitor:
                                     node.recovery_attempts += 1
                                     self.need_rescheduling = True
                                     data.session.commit()
-                        
+
                         # Check heartbeat interval
-                        if interval > node.max_heartbeat_interval and node.health_status == "healthy":
+                        if (
+                            interval > node.max_heartbeat_interval
+                            and node.health_status == "healthy"
+                        ):
                             self.logger.warning(
                                 f"Node {node.name} missed heartbeat for {interval:.1f}s, marking as failed"
                             )
@@ -202,7 +205,9 @@ class DockerMonitor:
                     self.logger.error(f"Error monitoring node health: {str(e)}")
                     data.session.rollback()
 
-                time.sleep(MAX_HEARTBEAT_INTERVAL / 3)  # Check multiple times within max interval
+                time.sleep(
+                    MAX_HEARTBEAT_INTERVAL / 3
+                )  # Check multiple times within max interval
 
     def attempt_node_recovery(self):
         """Attempt to recover failed nodes by restarting their containers"""
@@ -212,34 +217,46 @@ class DockerMonitor:
                     # Find failed nodes with recovery attempts less than max
                     failed_nodes = Node.query.filter(
                         Node.health_status == "failed",
-                        Node.recovery_attempts <= Node.max_recovery_attempts
+                        Node.recovery_attempts <= Node.max_recovery_attempts,
                     ).all()
 
                     for node in failed_nodes:
-                        self.logger.info(f"Attempting to recover node {node.name} (Attempt {node.recovery_attempts})")
-                        
+                        self.logger.info(
+                            f"Attempting to recover node {node.name} (Attempt {node.recovery_attempts})"
+                        )
+
                         # Check if node container exists
                         if node.docker_container_id:
                             # Try to restart the container
-                            success = self.docker_service.start_container(node.docker_container_id)
-                            
+                            success = self.docker_service.start_container(
+                                node.docker_container_id
+                            )
+
                             if success:
-                                self.logger.info(f"Node {node.name} container restarted successfully")
+                                self.logger.info(
+                                    f"Node {node.name} container restarted successfully"
+                                )
                                 # Reset heartbeat to give it time to report in
                                 node.last_heartbeat = datetime.now(timezone.utc)
                                 node.health_status = "recovering"
                                 data.session.commit()
                             else:
-                                self.logger.warning(f"Failed to restart node {node.name} container")
+                                self.logger.warning(
+                                    f"Failed to restart node {node.name} container"
+                                )
                                 node.recovery_attempts += 1
                                 if node.recovery_attempts > node.max_recovery_attempts:
                                     node.health_status = "permanently_failed"
-                                    self.logger.error(f"Node {node.name} marked as permanently failed after {node.recovery_attempts} attempts")
+                                    self.logger.error(
+                                        f"Node {node.name} marked as permanently failed after {node.recovery_attempts} attempts"
+                                    )
                                     self.need_rescheduling = True
                                 data.session.commit()
                         else:
                             # No container ID, can't recover
-                            self.logger.error(f"Node {node.name} has no container ID, can't recover")
+                            self.logger.error(
+                                f"Node {node.name} has no container ID, can't recover"
+                            )
                             node.health_status = "permanently_failed"
                             self.need_rescheduling = True
                             data.session.commit()
@@ -247,7 +264,7 @@ class DockerMonitor:
                 except Exception as e:
                     self.logger.error(f"Error in node recovery: {str(e)}")
                     data.session.rollback()
-                
+
                 time.sleep(RECOVERY_INTERVAL)
 
     def trigger_pod_rescheduling(self):
@@ -265,93 +282,110 @@ class DockerMonitor:
                         continue
 
                     self.logger.info("Starting pod rescheduling process")
-                    
+
                     # Find failed/permanently failed nodes with pods
                     failed_nodes = Node.query.filter(
                         Node.health_status.in_(["failed", "permanently_failed"]),
                     ).all()
-                    
+
                     for failed_node in failed_nodes:
                         # Get pods on the failed node
                         pods_to_reschedule = Pod.query.filter(
                             Pod.node_id == failed_node.id,
-                            Pod.health_status.notin_(["terminated", "failed"])
+                            ~Pod.health_status.in_(["terminated", "failed"]),
                         ).all()
-                        
+
                         if not pods_to_reschedule:
                             continue
-                            
-                        self.logger.info(f"Found {len(pods_to_reschedule)} pods to reschedule from node {failed_node.name}")
-                        
+
+                        self.logger.info(
+                            f"Found {len(pods_to_reschedule)} pods to reschedule from node {failed_node.name}"
+                        )
+
                         # Find healthy nodes with sufficient resources
                         healthy_nodes = Node.query.filter(
                             Node.health_status == "healthy",
                             Node.node_type == "worker",
                             Node.kubelet_status == "running",
-                            Node.container_runtime_status == "running"
+                            Node.container_runtime_status == "running",
                         ).all()
-                        
+
                         # Sort healthy nodes by available CPU (most to least)
-                        healthy_nodes.sort(key=lambda n: n.cpu_cores_avail, reverse=True)
-                        
+                        healthy_nodes.sort(
+                            key=lambda n: n.cpu_cores_avail, reverse=True
+                        )
+
                         # Reschedule each pod
                         for pod in pods_to_reschedule:
-                            self.logger.info(f"Rescheduling pod {pod.name} (requires {pod.cpu_cores_req} CPU cores)")
-                            
+                            self.logger.info(
+                                f"Rescheduling pod {pod.name} (requires {pod.cpu_cores_req} CPU cores)"
+                            )
+
                             # Find node with enough resources
                             target_node = None
                             for node in healthy_nodes:
                                 if node.cpu_cores_avail >= pod.cpu_cores_req:
                                     target_node = node
                                     break
-                            
+
                             if not target_node:
-                                self.logger.warning(f"No suitable node found to reschedule pod {pod.name}")
+                                self.logger.warning(
+                                    f"No suitable node found to reschedule pod {pod.name}"
+                                )
                                 continue
-                                
-                            self.logger.info(f"Rescheduling pod {pod.name} to node {target_node.name}")
-                            
+
+                            self.logger.info(
+                                f"Rescheduling pod {pod.name} to node {target_node.name}"
+                            )
+
                             # Update node resource tracking
                             old_node_id = pod.node_id
-                            
+
                             # Return resources to failed node for accounting purposes
                             failed_node.cpu_cores_avail += pod.cpu_cores_req
-                            
+
                             # Update resources on target node
                             target_node.cpu_cores_avail -= pod.cpu_cores_req
-                            
+
                             # Update pod's node ID
                             pod.node_id = target_node.id
                             pod.health_status = "rescheduled"
-                            
+
                             # Update node's pod lists
                             if pod.id in failed_node.pod_ids:
                                 failed_node.remove_pod(pod.id)
                             target_node.add_pod(pod.id)
-                            
+
                             # Notify the new node about pod assignment
                             if target_node.node_ip:
                                 try:
                                     requests.post(
                                         f"http://{target_node.node_ip}:5000/pods",
-                                        json={"pod_id": pod.id, "cpu_cores_req": pod.cpu_cores_req},
-                                        timeout=5
+                                        json={
+                                            "pod_id": pod.id,
+                                            "cpu_cores_req": pod.cpu_cores_req,
+                                        },
+                                        timeout=5,
                                     )
-                                    self.logger.info(f"Notified node {target_node.name} about new pod assignment")
+                                    self.logger.info(
+                                        f"Notified node {target_node.name} about new pod assignment"
+                                    )
                                 except Exception as e:
-                                    self.logger.warning(f"Failed to notify target node about pod assignment: {str(e)}")
-                            
+                                    self.logger.warning(
+                                        f"Failed to notify target node about pod assignment: {str(e)}"
+                                    )
+
                             self.logger.info(
                                 f"Pod {pod.name} (ID: {pod.id}) rescheduled: "
                                 f"Node {old_node_id} → Node {target_node.id}"
                             )
-                            
+
                             data.session.commit()
-                    
+
                     self.need_rescheduling = False  # Reset flag after processing
-                
+
                 except Exception as e:
                     self.logger.error(f"Error in pod rescheduling: {str(e)}")
                     data.session.rollback()
-                    
+
                 time.sleep(RESCHEDULER_INTERVAL)
