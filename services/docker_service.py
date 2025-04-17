@@ -2,7 +2,10 @@ import docker
 import logging
 import os
 import socket
+import time
+import requests
 from typing import Dict, List, Optional
+
 
 class DockerService:
     def __init__(self):
@@ -18,9 +21,7 @@ class DockerService:
             networks = self.client.networks.list(names=[self.node_network_name])
             if not networks:
                 self.client.networks.create(
-                    name=self.node_network_name,
-                    driver="bridge",
-                    check_duplicate=True
+                    name=self.node_network_name, driver="bridge", check_duplicate=True
                 )
                 self.logger.info(f"Created network {self.node_network_name}")
             else:
@@ -39,70 +40,78 @@ class DockerService:
             return "host.docker.internal"
 
     def create_node_container(
-        self,
-        node_id: int,
-        node_name: str,
-        cpu_cores: int,
-        node_type: str = "worker",
-        port: int = None
-    ) -> dict:
+        self, node_id, node_name, cpu_cores, node_type="worker", port=None
+    ):
         """Create a Docker container to simulate a node"""
         try:
+            # Try to remove any existing containers with the same name
+            container_name = f"kube9-node-{node_name}"
+            try:
+                existing = self.client.containers.get(container_name)
+                self.logger.warning(
+                    f"Found existing container named {container_name}, removing it"
+                )
+                existing.remove(force=True)
+            except:
+                pass  # Container doesn't exist, which is fine
+
             host_ip = self.get_host_ip()
             api_server = f"http://{host_ip}:5000"
-            
+
             # Generate a port for the node
             if port is None:
-                port = 5000 + node_id
-                
-            container_name = f"kube9-node-{node_name}"
-            
+                port = 5000 + node_id if node_id > 0 else 5001
+
             # Build node simulator image if it doesn't exist
             try:
                 self.client.images.get("kube9-node-simulator")
                 self.logger.info("Using existing kube9-node-simulator image")
             except docker.errors.ImageNotFound:
                 self.logger.info("Building kube9-node-simulator image...")
-                node_sim_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "node_simulation")
-                
-                # Build the image
+                node_sim_dir = os.path.join(
+                    os.path.dirname(os.path.dirname(__file__)), "node_simulation"
+                )
                 self.client.images.build(
-                    path=node_sim_dir,
-                    tag="kube9-node-simulator",
-                    rm=True
+                    path=node_sim_dir, tag="kube9-node-simulator", rm=True
                 )
                 self.logger.info("kube9-node-simulator image built successfully")
-                
-            # Create the container
+
+            # Create the container with the correct node ID from the start
             container = self.client.containers.run(
                 image="kube9-node-simulator",
                 name=container_name,
                 detach=True,
                 environment={
-                    "NODE_ID": str(node_id),
+                    "NODE_ID": str(node_id),  # Set correct ID immediately
                     "NODE_NAME": node_name,
                     "CPU_CORES": str(cpu_cores),
                     "NODE_TYPE": node_type,
-                    "API_SERVER": api_server
+                    "API_SERVER": api_server,
                 },
                 network=self.node_network_name,
-                ports={
-                    '5000/tcp': port
-                },
+                ports={"5000/tcp": port},
                 restart_policy={"Name": "unless-stopped"},
                 cpu_quota=int(cpu_cores * 100000),  # Docker CPU quota in microseconds
-                mem_limit=f"{cpu_cores * 512}m"  # 512MB per CPU core
+                mem_limit=f"{cpu_cores * 512}m",  # 512MB per CPU core
+                extra_hosts={
+                    "host.docker.internal": "host-gateway"
+                },  # Important for connectivity
             )
-            
+
+            # Wait a moment for the container to start
+            time.sleep(2)
+
             # Get container IP address
             container.reload()
-            container_ip = container.attrs['NetworkSettings']['Networks'][self.node_network_name]['IPAddress']
-            
+            container_ip = container.attrs["NetworkSettings"]["Networks"][
+                self.node_network_name
+            ]["IPAddress"]
+
             return {
                 "container_id": container.id,
                 "name": container_name,
                 "node_ip": container_ip,
-                "node_port": port
+                "node_port": port,
             }
         except Exception as e:
             self.logger.error(f"Failed to create node container: {str(e)}")
@@ -196,12 +205,46 @@ class DockerService:
             return False
 
     def create_network(self, name: str) -> str:
-        """Create a Docker network for a pod"""
+        """Create a Docker network for a pod, handling existing networks"""
         try:
-            network = self.client.networks.create(name, driver="bridge")
-            return network.id
+            # Check if network already exists
+            try:
+                existing_networks = self.client.networks.list(names=[name])
+                if existing_networks:
+                    self.logger.info(
+                        f"Network {name} already exists, removing it first"
+                    )
+                    for network in existing_networks:
+                        try:
+                            network.remove()
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Error removing existing network {name}: {str(e)}"
+                            )
+                    # Brief pause to ensure network is removed
+                    time.sleep(1)
+            except Exception as e:
+                self.logger.warning(
+                    f"Error checking for existing network {name}: {str(e)}"
+                )
+
+            # Create the network (with retry if needed)
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                try:
+                    network = self.client.networks.create(name, driver="bridge")
+                    return network.id
+                except docker.errors.APIError as e:
+                    if "already exists" in str(e) and attempt < max_attempts - 1:
+                        self.logger.warning(
+                            f"Network {name} still exists, retrying after delay..."
+                        )
+                        time.sleep(2)
+                    else:
+                        raise
+
         except Exception as e:
-            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
+            self.logger.error(f"Failed to create network {name}: {str(e)}")
             raise
 
     def remove_network(self, network_id: str) -> bool:
@@ -234,12 +277,17 @@ class DockerService:
             return False
 
     def get_container_status(self, container_id: str) -> str:
-        """Get container status"""
+        """Get container status safely"""
+        if not container_id:
+            return "unknown"
+
         try:
             container = self.client.containers.get(container_id)
             return container.status
         except Exception as e:
-            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
+            self.logger.warning(
+                f"Container {container_id} status check failed: {str(e)}"
+            )
             return "unknown"
 
     def get_node_container_info(self, container_id: str) -> dict:
@@ -247,22 +295,45 @@ class DockerService:
         try:
             container = self.client.containers.get(container_id)
             container.reload()
-            
-            network_settings = container.attrs['NetworkSettings']['Networks']
+
+            network_settings = container.attrs["NetworkSettings"]["Networks"]
             if self.node_network_name in network_settings:
-                ip = network_settings[self.node_network_name]['IPAddress']
+                ip = network_settings[self.node_network_name]["IPAddress"]
             else:
-                ip = next(iter(network_settings.values()))['IPAddress']
-                
-            port_bindings = container.attrs['NetworkSettings']['Ports'].get('5000/tcp', [])
-            port = int(port_bindings[0]['HostPort']) if port_bindings else 5000
-            
+                ip = next(iter(network_settings.values()))["IPAddress"]
+
+            port_bindings = container.attrs["NetworkSettings"]["Ports"].get(
+                "5000/tcp", []
+            )
+            port = int(port_bindings[0]["HostPort"]) if port_bindings else 5000
+
             return {
                 "container_id": container.id,
                 "status": container.status,
                 "ip": ip,
-                "port": port
+                "port": port,
             }
         except Exception as e:
             self.logger.error(f"Failed to get node container info: {str(e)}")
             return {"status": "unknown"}
+
+    def container_exists(self, container_id):
+        """Check if container exists more robustly"""
+        if not container_id:
+            return False
+
+        try:
+            self.client.containers.get(container_id)
+            return True
+        except Exception:
+            return False
+
+    def check_container_responsiveness(self, container_ip, timeout=2):
+        """Check if a container is responsive by making an HTTP request"""
+        try:
+            response = requests.get(
+                f"http://{container_ip}:5000/status", timeout=timeout
+            )
+            return response.status_code == 200
+        except Exception:
+            return False

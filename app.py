@@ -1,7 +1,7 @@
-from flask import Flask
+from flask import Flask, jsonify
 from sqlalchemy import text
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
-from models import data
+from models import data, Node
 from routes.nodes import nodes_bp, init_routes
 from routes.pods import pods_bp
 from flask_migrate import Migrate
@@ -10,15 +10,26 @@ import logging
 import signal
 import sys
 
+# Configure logging with proper formatting for better readability
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+# Create a file handler to save logs
+file_handler = logging.FileHandler("kube9.log")
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+)
+
+# Add file handler to root logger
+logging.getLogger("").addHandler(file_handler)
+
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 
 data.init_app(app)
 docker_monitor = DockerMonitor(app)
@@ -30,6 +41,7 @@ app.register_blueprint(pods_bp, url_prefix="/pods")
 
 with app.app_context():
     init_routes(app)
+
 
 @app.route("/")
 def home():
@@ -46,6 +58,42 @@ def test_db():
         return f"Database Connection failed: {str(e)}"
 
 
+def cleanup_initializing_nodes():
+    """Clean up nodes that are stuck in initializing state"""
+    with app.app_context():
+        try:
+            # Find nodes that are initializing
+            nodes = Node.query.filter_by(health_status="initializing").all()
+
+            for node in nodes:
+                # If node has no heartbeats after 5 minutes, it's probably dead
+                if node.last_heartbeat is None:
+                    app.logger.warning(
+                        f"Removing node {node.name} stuck in initializing state"
+                    )
+                    # Try to clean up container
+                    if node.docker_container_id:
+                        try:
+                            from services.docker_service import DockerService
+
+                            docker_service = DockerService()
+                            docker_service.stop_node_container(node.docker_container_id)
+                            docker_service.remove_node_container(
+                                node.docker_container_id
+                            )
+                        except Exception as e:
+                            app.logger.warning(f"Error cleaning up container: {str(e)}")
+
+                    # Remove node from database
+                    data.session.delete(node)
+
+            data.session.commit()
+            app.logger.info("Initializing nodes cleanup complete")
+        except Exception as e:
+            app.logger.error(f"Error cleaning up initializing nodes: {str(e)}")
+            data.session.rollback()
+
+
 def graceful_exit(signal, frame):
     print("\nShutting down Kube-9 Container Orchestration System...")
     docker_monitor.stop()
@@ -59,6 +107,8 @@ signal.signal(signal.SIGINT, graceful_exit)
 
 if __name__ == "__main__":
     print("Starting Kube-9 Container Orchestration System...")
+    print("Cleaning up any stale nodes...")
+    cleanup_initializing_nodes()
     print("Initializing monitors and services...")
     try:
         docker_monitor.start()

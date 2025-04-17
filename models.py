@@ -4,6 +4,7 @@ import json
 
 data = SQLAlchemy()
 
+
 class Node(data.Model):
     __tablename__ = "nodes"
 
@@ -13,18 +14,18 @@ class Node(data.Model):
     cpu_cores_avail = data.Column(data.Integer, nullable=False)
     cpu_cores_total = data.Column(data.Integer, nullable=False)  # Total cores
     health_status = data.Column(data.String(20), default="healthy")
-    
+
     # Docker container representing the node
     docker_container_id = data.Column(data.String(64), nullable=True)
     node_ip = data.Column(data.String(15), nullable=True)
     node_port = data.Column(data.Integer, default=5000)
-    
+
     # Node components status
     kubelet_status = data.Column(data.String(20), default="running")
     container_runtime_status = data.Column(data.String(20), default="running")
     kube_proxy_status = data.Column(data.String(20), default="running")
     node_agent_status = data.Column(data.String(20), default="running")
-    
+
     # Master node specific components
     api_server_status = data.Column(data.String(20), nullable=True)
     scheduler_status = data.Column(data.String(20), nullable=True)
@@ -34,15 +35,17 @@ class Node(data.Model):
     # Heartbeat tracking
     last_heartbeat = data.Column(data.DateTime)
     heartbeat_interval = data.Column(data.Integer, default=60)  # 1 minute
-    max_heartbeat_interval = data.Column(data.Integer, default=90)  # 1.5 minutes
-    
+    max_heartbeat_interval = data.Column(
+        data.Integer, default=120
+    )  # 2 minutes 
+
     # Recovery tracking
     recovery_attempts = data.Column(data.Integer, default=0)
     max_recovery_attempts = data.Column(data.Integer, default=3)
 
     # Store pod_ids as JSON string
-    _pod_ids = data.Column(data.Text, default='[]')
-    
+    _pod_ids = data.Column(data.Text, default="[]")
+
     # Relationship with pods
     pods = data.relationship(
         "Pod", backref="node", lazy=True, cascade="all, delete-orphan"
@@ -52,33 +55,33 @@ class Node(data.Model):
         super(Node, self).__init__(**kwargs)
         self.last_heartbeat = datetime.now(timezone.utc)
         self.health_status = "healthy"
-        self.cpu_cores_total = kwargs.get('cpu_cores_avail', 0)
-        self._pod_ids = '[]'
+        self.cpu_cores_total = kwargs.get("cpu_cores_avail", 0)
+        self._pod_ids = "[]"
 
     @property
     def pod_ids(self):
         """Get list of pod IDs hosted on this node"""
         return json.loads(self._pod_ids)
-        
+
     @pod_ids.setter
     def pod_ids(self, value):
         """Set list of pod IDs hosted on this node"""
         self._pod_ids = json.dumps(value)
-        
+
     def add_pod(self, pod_id):
         """Add a pod ID to this node's pod list"""
         pods = self.pod_ids
         if pod_id not in pods:
             pods.append(pod_id)
             self.pod_ids = pods
-            
+
     def remove_pod(self, pod_id):
         """Remove a pod ID from this node's pod list"""
         pods = self.pod_ids
         if pod_id in pods:
             pods.remove(pod_id)
             self.pod_ids = pods
-            
+
     def update_heartbeat(self):
         """Update node heartbeat"""
         try:

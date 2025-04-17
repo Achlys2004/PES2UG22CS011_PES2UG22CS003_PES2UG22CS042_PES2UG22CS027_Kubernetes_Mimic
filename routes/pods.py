@@ -4,10 +4,11 @@ import ipaddress
 import requests
 from models import data, Pod, Node, Container, Volume, ConfigItem
 from services.docker_service import DockerService
-import docker
+import uuid
 
 pods_bp = Blueprint("pods", __name__)
 docker_service = DockerService()
+
 
 @pods_bp.route("/", methods=["POST"])
 def add_pod():
@@ -44,9 +45,11 @@ def add_pod():
 
         if not node:
             return (
-                jsonify({
-                    "error": "No available worker node found with enough CPU resources or healthy components"
-                }),
+                jsonify(
+                    {
+                        "error": "No available worker node found with enough CPU resources or healthy components"
+                    }
+                ),
                 400,
             )
 
@@ -91,7 +94,9 @@ def add_pod():
         # Create volumes
         for volume_data in volumes_data:
             volume = Volume(
-                name=volume_data.get("name", f"{name}-volume-{random.randint(1000, 9999)}"),
+                name=volume_data.get(
+                    "name", f"{name}-volume-{random.randint(1000, 9999)}"
+                ),
                 volume_type=volume_data.get("type", "emptyDir"),
                 size=volume_data.get("size", 1),
                 path=volume_data.get("path", "/data"),
@@ -102,7 +107,9 @@ def add_pod():
         # Create config items
         for config_item in config_data:
             config = ConfigItem(
-                name=config_item.get("name", f"{name}-config-{random.randint(1000, 9999)}"),
+                name=config_item.get(
+                    "name", f"{name}-config-{random.randint(1000, 9999)}"
+                ),
                 config_type=config_item.get("type", "env"),
                 key=config_item.get("key", "KEY"),
                 value=config_item.get("value", "VALUE"),
@@ -120,8 +127,8 @@ def add_pod():
 
         # Create Docker resources
         try:
-            # Create network for the pod
-            network_name = f"pod-network-{new_pod.id}"
+            unique_id = str(uuid.uuid4())[:8]
+            network_name = f"pod-network-{new_pod.id}-{unique_id}"
             network_id = docker_service.create_network(network_name)
             new_pod.docker_network_id = network_id
 
@@ -174,31 +181,35 @@ def add_pod():
                             "pod_id": new_pod.id,
                             "cpu_cores_req": cpu_cores_req,
                         },
-                        timeout=5
+                        timeout=5,
                     )
-                    
+
                     if response.status_code != 200:
                         current_app.logger.warning(
                             f"Node {node.name} responded with status {response.status_code} "
                             f"when adding pod: {response.text}"
                         )
             except Exception as e:
-                current_app.logger.warning(f"Failed to notify node about new pod: {str(e)}")
+                current_app.logger.warning(
+                    f"Failed to notify node about new pod: {str(e)}"
+                )
 
             # Add pod ID to node's pod list
             node.add_pod(new_pod.id)
-            
+
             # Commit all changes
             data.session.commit()
-            
+
         except Exception as e:
             # Cleanup on failure
             current_app.logger.error(f"Error creating Docker resources: {str(e)}")
-            
+
             # Clean up containers
             for container in new_pod.containers:
                 if container.docker_container_id:
-                    docker_service.remove_container(container.docker_container_id, force=True)
+                    docker_service.remove_container(
+                        container.docker_container_id, force=True
+                    )
 
             # Clean up network
             if new_pod.docker_network_id:
@@ -218,21 +229,23 @@ def add_pod():
 
         # Return success response
         return (
-            jsonify({
-                "message": f"Pod '{name}' assigned to node '{node.name}' successfully!",
-                "pod_details": {
-                    "id": new_pod.id,
-                    "name": new_pod.name,
-                    "ip_address": new_pod.ip_address,
-                    "node": node.name,
-                    "type": new_pod.pod_type,
-                    "status": new_pod.health_status,
-                    "containers_count": len(new_pod.containers),
-                },
-            }),
+            jsonify(
+                {
+                    "message": f"Pod '{name}' assigned to node '{node.name}' successfully!",
+                    "pod_details": {
+                        "id": new_pod.id,
+                        "name": new_pod.name,
+                        "ip_address": new_pod.ip_address,
+                        "node": node.name,
+                        "type": new_pod.pod_type,
+                        "status": new_pod.health_status,
+                        "containers_count": len(new_pod.containers),
+                    },
+                }
+            ),
             200,
         )
-    
+
     except Exception as e:
         current_app.logger.error(f"Error adding pod: {str(e)}")
         data.session.rollback()
@@ -311,12 +324,13 @@ def list_pods():
 
     return jsonify(result), 200
 
+
 @pods_bp.route("/<int:pod_id>", methods=["GET"])
 def get_pod(pod_id):
     """Get details of a specific pod"""
     pod = Pod.query.get_or_404(pod_id)
     node = Node.query.get(pod.node_id)
-    
+
     containers = [
         {
             "id": container.id,
@@ -326,51 +340,65 @@ def get_pod(pod_id):
             "docker_status": container.docker_status,
             "cpu": container.cpu_req,
             "memory": container.memory_req,
-            "docker_id": container.docker_container_id
+            "docker_id": container.docker_container_id,
         }
         for container in pod.containers
     ]
 
-    volumes = [
-        {
-            "id": volume.id,
-            "name": volume.name,
-            "type": volume.volume_type,
-            "size": volume.size,
-            "path": volume.path,
-            "docker_volume": volume.docker_volume_name
-        }
-        for volume in pod.volumes
-    ] if hasattr(pod, "volumes") else []
+    volumes = (
+        [
+            {
+                "id": volume.id,
+                "name": volume.name,
+                "type": volume.volume_type,
+                "size": volume.size,
+                "path": volume.path,
+                "docker_volume": volume.docker_volume_name,
+            }
+            for volume in pod.volumes
+        ]
+        if hasattr(pod, "volumes")
+        else []
+    )
 
-    configs = [
-        {
-            "id": config.id,
-            "name": config.name,
-            "type": config.config_type,
-            "key": config.key,
-            "value": (config.value if config.config_type != "secret" else "******"),
-        }
-        for config in pod.config_items
-    ] if hasattr(pod, "config_items") else []
+    configs = (
+        [
+            {
+                "id": config.id,
+                "name": config.name,
+                "type": config.config_type,
+                "key": config.key,
+                "value": (config.value if config.config_type != "secret" else "******"),
+            }
+            for config in pod.config_items
+        ]
+        if hasattr(pod, "config_items")
+        else []
+    )
 
-    return jsonify({
-        "id": pod.id,
-        "name": pod.name,
-        "cpu_cores_req": pod.cpu_cores_req,
-        "node": {
-            "id": node.id,
-            "name": node.name,
-            "type": node.node_type
-        } if node else None,
-        "health_status": pod.health_status,
-        "ip_address": pod.ip_address,
-        "type": pod.pod_type,
-        "docker_network_id": pod.docker_network_id,
-        "containers": containers,
-        "volumes": volumes,
-        "config": configs,
-    }), 200
+    return (
+        jsonify(
+            {
+                "id": pod.id,
+                "name": pod.name,
+                "cpu_cores_req": pod.cpu_cores_req,
+                "node": (
+                    {"id": node.id, "name": node.name, "type": node.node_type}
+                    if node
+                    else None
+                ),
+                "health_status": pod.health_status,
+                "ip_address": pod.ip_address,
+                "type": pod.pod_type,
+                "docker_network_id": pod.docker_network_id,
+                "containers": containers,
+                "volumes": volumes,
+                "config": configs,
+            }
+        ),
+        200,
+    )
+
 
 @pods_bp.route("/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
@@ -378,10 +406,10 @@ def delete_pod(pod_id):
     try:
         pod = Pod.query.get_or_404(pod_id)
         node = Node.query.get(pod.node_id)
-        
+
         if not node:
             return jsonify({"error": "Associated node not found"}), 404
-            
+
         # Clean up Docker resources
         try:
             # Stop and remove containers
@@ -400,37 +428,37 @@ def delete_pod(pod_id):
             for volume in pod.volumes:
                 if volume.docker_volume_name:
                     docker_service.remove_volume(volume.docker_volume_name)
-        
+
         except Exception as e:
             current_app.logger.error(f"Error removing Docker resources: {str(e)}")
             # Continue with pod deletion even if Docker resources cleanup fails
-        
+
         # Notify the node about pod removal
         try:
             if node.node_ip:
-                requests.delete(
-                    f"http://{node.node_ip}:5000/pods/{pod_id}",
-                    timeout=5
-                )
+                requests.delete(f"http://{node.node_ip}:5000/pods/{pod_id}", timeout=5)
         except Exception as e:
-            current_app.logger.warning(f"Failed to notify node about pod deletion: {str(e)}")
-        
+            current_app.logger.warning(
+                f"Failed to notify node about pod deletion: {str(e)}"
+            )
+
         # Return CPU resources to the node
         node.cpu_cores_avail += pod.cpu_cores_req
-        
+
         # Remove pod ID from node's pod list
         node.remove_pod(pod_id)
-        
+
         # Delete the pod from database
         data.session.delete(pod)
         data.session.commit()
-        
+
         return jsonify({"message": f"Pod {pod_id} deleted successfully"}), 200
-    
+
     except Exception as e:
         current_app.logger.error(f"Error deleting pod {pod_id}: {str(e)}")
         data.session.rollback()
         return jsonify({"error": str(e)}), 500
+
 
 @pods_bp.route("/<int:pod_id>/health", methods=["GET"])
 def check_pod_health(pod_id):
@@ -443,13 +471,15 @@ def check_pod_health(pod_id):
             current_status = docker_service.get_container_status(
                 container.docker_container_id
             )
-            container_statuses.append({
-                "container_id": container.id,
-                "name": container.name,
-                "image": container.image,
-                "docker_status": current_status,
-                "app_status": container.status,
-            })
+            container_statuses.append(
+                {
+                    "container_id": container.id,
+                    "name": container.name,
+                    "image": container.image,
+                    "docker_status": current_status,
+                    "app_status": container.status,
+                }
+            )
 
     health_data = {
         "pod_id": pod.id,
