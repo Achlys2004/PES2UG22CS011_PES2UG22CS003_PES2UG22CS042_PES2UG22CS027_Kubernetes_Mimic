@@ -64,7 +64,7 @@ When creating pods, the system will:
 
    ```bash
    git clone https://github.com/Achlys2004/PES2UG22CS011_PES2UG22CS003_PES2UG22CS042_PES2UG22CS027_Kubernetes_Mimic.git
-   
+
    ```
 
 2. Install dependencies:
@@ -130,6 +130,7 @@ flask db upgrade
    ```
 
 3. Access the API at:
+
    ```
    http://localhost:5000/
    ```
@@ -327,24 +328,74 @@ The Kube-9 dashboard provides a visual interface to manage and monitor your clus
      }
      ```
 
-4. **List All Pods**
+4. **Create a Pod with Multiple Volumes**
+
+   - **Method**: POST
+   - **URL**: `http://localhost:5000/pods/`
+   - **Body**:
+     ```json
+     {
+       "name": "data-processing-pod",
+       "cpu_cores_req": 2,
+       "containers": [
+         {
+           "name": "processor",
+           "image": "python:3.9",
+           "cpu_req": 1.5,
+           "memory_req": 1024,
+           "command": "python",
+           "args": "-m http.server 8080"
+         }
+       ],
+       "volumes": [
+         {
+           "name": "input-volume",
+           "type": "emptyDir",
+           "size": 2,
+           "path": "/input"
+         },
+         {
+           "name": "output-volume",
+           "type": "emptyDir",
+           "size": 5,
+           "path": "/output"
+         },
+         {
+           "name": "config-volume",
+           "type": "configMap",
+           "size": 1,
+           "path": "/etc/config"
+         }
+       ],
+       "config": [
+         {
+           "name": "processing-config",
+           "type": "env",
+           "key": "PROCESSING_MODE",
+           "value": "batch"
+         }
+       ]
+     }
+     ```
+
+5. **List All Pods**
 
    - **Method**: GET
    - **URL**: `http://localhost:5000/pods/`
 
-5. **Get Pod Details**
+6. **Get Pod Details**
 
    - **Method**: GET
    - **URL**: `http://localhost:5000/pods/1`
      _(Replace `1` with actual pod ID)_
 
-6. **Check Pod Health**
+7. **Check Pod Health**
 
    - **Method**: GET
    - **URL**: `http://localhost:5000/pods/1/health`
      _(Replace `1` with actual pod ID)_
 
-7. **Delete a Pod**
+8. **Delete a Pod**
 
    - **Method**: DELETE
    - **URL**: `http://localhost:5000/pods/1`
@@ -376,11 +427,13 @@ docker build -t kube9-node-simulator .
 To verify the Docker resources created by Kube-9:
 
 - **View Running Containers**:
+
   ```bash
   docker ps | grep kube9-node
   ```
 
 - **View Networks**:
+
   ```bash
   docker network ls | grep kube9
   ```

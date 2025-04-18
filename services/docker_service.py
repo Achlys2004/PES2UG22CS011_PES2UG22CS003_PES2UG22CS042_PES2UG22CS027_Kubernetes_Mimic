@@ -4,7 +4,7 @@ import os
 import socket
 import time
 import requests
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 
 class DockerService:
@@ -12,22 +12,7 @@ class DockerService:
         self.client = docker.from_env()
         self.logger = logging.getLogger(__name__)
         self.node_network_name = "kube9-node-network"
-        self._ensure_node_network()
-
-    def _ensure_node_network(self):
-        """Ensure the node network exists"""
-        try:
-            # Check if the network exists
-            networks = self.client.networks.list(names=[self.node_network_name])
-            if not networks:
-                self.client.networks.create(
-                    name=self.node_network_name, driver="bridge", check_duplicate=True
-                )
-                self.logger.info(f"Created network {self.node_network_name}")
-            else:
-                self.logger.info(f"Network {self.node_network_name} already exists")
-        except Exception as e:
-            self.logger.error(f"Failed to ensure node network: {str(e)}")
+        self.create_network(self.node_network_name, ensure_exists=True)
 
     def get_host_ip(self):
         """Get the host IP address to allow containers to connect back to API server"""
@@ -36,7 +21,6 @@ class DockerService:
             host_ip = socket.gethostbyname(hostname)
             return host_ip
         except Exception:
-            # Default to host.docker.internal for Docker Desktop on Windows/Mac
             return "host.docker.internal"
 
     def create_node_container(
@@ -106,26 +90,6 @@ class DockerService:
             self.logger.error(f"Failed to create node container: {str(e)}")
             raise
 
-    def stop_node_container(self, container_id: str) -> bool:
-        """Stop a node container"""
-        try:
-            container = self.client.containers.get(container_id)
-            container.stop(timeout=10)
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to stop node container: {str(e)}")
-            return False
-
-    def remove_node_container(self, container_id: str) -> bool:
-        """Remove a node container"""
-        try:
-            container = self.client.containers.get(container_id)
-            container.remove(force=True)
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to remove node container: {str(e)}")
-            return False
-
     # Original container methods
     def create_container(
         self,
@@ -173,65 +137,94 @@ class DockerService:
             self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
-    def stop_container(self, container_id: str) -> bool:
-        """Stop a Docker container"""
+    def stop_container(self, container_id: str, is_node: bool = False) -> bool:
+        """Stop a Docker container
+        
+        Args:
+            container_id: Container ID
+            is_node: Whether this is a node container (for longer timeout)
+        """
+        if not container_id:
+            return False
+            
         try:
             container = self.client.containers.get(container_id)
-            container.stop(timeout=5)
+            # Use longer timeout for node containers
+            timeout = 10 if is_node else 5
+            container.stop(timeout=timeout)
+            
+            container_type = "node container" if is_node else "container"
+            self.logger.info(f"Stopped {container_type} {container_id}")
             return True
         except Exception as e:
-            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
+            container_type = "node container" if is_node else "container"
+            self.logger.error(f"Failed to stop {container_type}: {str(e)}")
             return False
 
-    def remove_container(self, container_id: str, force: bool = False) -> bool:
-        """Remove a Docker container"""
+    def remove_container(self, container_id: str, force: bool = False, is_node: bool = False) -> bool:
+        """Remove a Docker container
+        
+        Args:
+            container_id: Container ID
+            force: Force removal even if running
+            is_node: Whether this is a node container
+        """
+        if not container_id:
+            return False
+            
         try:
             container = self.client.containers.get(container_id)
-            container.remove(force=force)
+            # Always force remove node containers
+            force_remove = True if is_node else force
+            container.remove(force=force_remove)
+            
+            container_type = "node container" if is_node else "container"
+            self.logger.info(f"Removed {container_type} {container_id}")
             return True
         except Exception as e:
-            self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
+            container_type = "node container" if is_node else "container"
+            self.logger.error(f"Failed to remove {container_type}: {str(e)}")
             return False
 
-    def create_network(self, name: str) -> str:
-        """Create a Docker network for a pod, handling existing networks"""
+    def create_network(self, name: str, ensure_exists: bool = False) -> str:
+        """Create or ensure a Docker network exists
+        
+        Args:
+            name: Network name
+            ensure_exists: If True, won't remove existing network
+        """
         try:
             # Check if network already exists
-            try:
-                existing_networks = self.client.networks.list(names=[name])
-                if existing_networks:
-                    self.logger.info(
-                        f"Network {name} already exists, removing it first"
-                    )
-                    for network in existing_networks:
-                        try:
-                            network.remove()
-                        except Exception as e:
-                            self.logger.warning(
-                                f"Error removing existing network {name}: {str(e)}"
-                            )
-                    # Brief pause to ensure network is removed
-                    time.sleep(1)
-            except Exception as e:
-                self.logger.warning(
-                    f"Error checking for existing network {name}: {str(e)}"
-                )
-
+            existing_networks = self.client.networks.list(names=[name])
+            
+            if existing_networks:
+                if ensure_exists:
+                    self.logger.info(f"Network {name} already exists")
+                    return existing_networks[0].id
+                    
+                # Remove existing network first
+                self.logger.info(f"Network {name} already exists, removing it first")
+                for network in existing_networks:
+                    try:
+                        network.remove()
+                    except Exception as e:
+                        self.logger.warning(f"Error removing existing network {name}: {str(e)}")
+                # Brief pause to ensure network is removed
+                time.sleep(1)
+                    
             # Create the network (with retry if needed)
             max_attempts = 3
             for attempt in range(max_attempts):
                 try:
                     network = self.client.networks.create(name, driver="bridge")
+                    self.logger.info(f"Created network {name}")
                     return network.id
                 except docker.errors.APIError as e:
                     if "already exists" in str(e) and attempt < max_attempts - 1:
-                        self.logger.warning(
-                            f"Network {name} still exists, retrying after delay..."
-                        )
+                        self.logger.warning(f"Network {name} still exists, retrying after delay...")
                         time.sleep(2)
                     else:
                         raise
-
         except Exception as e:
             self.logger.error(f"Failed to create network {name}: {str(e)}")
             raise
@@ -265,57 +258,11 @@ class DockerService:
             self.logger.error(f"Detailed error: {type(e).__name__}: {str(e)}")
             return False
 
-    def get_container_status(self, container_id: str) -> str:
-        """Get container status safely"""
-        if not container_id:
-            return "unknown"
-
-        try:
-            container = self.client.containers.get(container_id)
-            return container.status
-        except Exception as e:
-            self.logger.warning(
-                f"Container {container_id} status check failed: {str(e)}"
-            )
-            return "unknown"
-
-    def get_node_container_info(self, container_id: str) -> dict:
-        """Get node container information"""
-        try:
-            container = self.client.containers.get(container_id)
-            container.reload()
-
-            network_settings = container.attrs["NetworkSettings"]["Networks"]
-            if self.node_network_name in network_settings:
-                ip = network_settings[self.node_network_name]["IPAddress"]
-            else:
-                ip = next(iter(network_settings.values()))["IPAddress"]
-
-            port_bindings = container.attrs["NetworkSettings"]["Ports"].get(
-                "5000/tcp", []
-            )
-            port = int(port_bindings[0]["HostPort"]) if port_bindings else 5000
-
-            return {
-                "container_id": container.id,
-                "status": container.status,
-                "ip": ip,
-                "port": port,
-            }
-        except Exception as e:
-            self.logger.error(f"Failed to get node container info: {str(e)}")
-            return {"status": "unknown"}
-
     def container_exists(self, container_id):
-        """Check if container exists more robustly"""
+        """Check if container exists"""
         if not container_id:
             return False
-
-        try:
-            self.client.containers.get(container_id)
-            return True
-        except Exception:
-            return False
+        return self.get_container_info(container_id) != "unknown"
 
     def check_container_responsiveness(self, container_ip, timeout=2):
         """Check if a container is responsive by making an HTTP request"""
@@ -326,3 +273,43 @@ class DockerService:
             return response.status_code == 200
         except Exception:
             return False
+
+    def get_container_info(self, container_id: str, detailed: bool = False) -> Union[str, dict]:
+        """Get container status or detailed information
+        
+        Args:
+            container_id: Docker container ID
+            detailed: If True, returns full info dict, otherwise just status string
+        """
+        if not container_id:
+            return "unknown" if not detailed else {"status": "unknown"}
+
+        try:
+            container = self.client.containers.get(container_id)
+            
+            if not detailed:
+                return container.status
+                
+            # Get detailed info for node containers
+            container.reload()
+            
+            # Get network information
+            network_settings = container.attrs["NetworkSettings"]["Networks"]
+            if self.node_network_name in network_settings:
+                ip = network_settings[self.node_network_name]["IPAddress"]
+            else:
+                ip = next(iter(network_settings.values()))["IPAddress"]
+
+            # Get port mapping
+            port_bindings = container.attrs["NetworkSettings"]["Ports"].get("5000/tcp", [])
+            port = int(port_bindings[0]["HostPort"]) if port_bindings else 5000
+
+            return {
+                "container_id": container.id,
+                "status": container.status,
+                "ip": ip,
+                "port": port,
+            }
+        except Exception as e:
+            self.logger.warning(f"Container {container_id} info check failed: {str(e)}")
+            return "unknown" if not detailed else {"status": "unknown"}

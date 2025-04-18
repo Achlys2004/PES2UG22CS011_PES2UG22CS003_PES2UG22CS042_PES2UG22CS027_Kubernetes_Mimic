@@ -35,9 +35,7 @@ class Node(data.Model):
     # Heartbeat tracking
     last_heartbeat = data.Column(data.DateTime)
     heartbeat_interval = data.Column(data.Integer, default=60)  # 1 minute
-    max_heartbeat_interval = data.Column(
-        data.Integer, default=120
-    )  # 2 minutes 
+    max_heartbeat_interval = data.Column(data.Integer, default=120)  # 2 minutes
 
     # Recovery tracking
     recovery_attempts = data.Column(data.Integer, default=0)
@@ -128,6 +126,7 @@ class Pod(data.Model):
         "Container", backref="pod", lazy=True, cascade="all, delete-orphan"
     )
 
+
 class Container(data.Model):
     __tablename__ = "containers"
 
@@ -161,6 +160,7 @@ class Volume(data.Model):
         backref=data.backref("volumes", lazy=True, cascade="all, delete-orphan"),
         lazy=True,
     )
+
 
 class ConfigItem(data.Model):
     __tablename__ = "config_items"

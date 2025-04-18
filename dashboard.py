@@ -1367,91 +1367,126 @@ elif page == "Create Resources":
                 key="new_pod_cpu",
             )
 
-            # Container configuration with expanders for multiple containers
+            # Container configuration with dynamic number of containers
             st.markdown("### Container Configuration")
 
-            # First container (required)
-            with st.expander("Container 1", expanded=True):
-                container1_name = st.text_input("Container Name", key="container1_name")
-                container1_image = st.text_input(
-                    "Container Image", "nginx:latest", key="container1_image"
-                )
+            # Let user select number of containers (at least 1)
+            num_containers = st.number_input("Number of containers", min_value=1, max_value=10, value=1, key="num_containers")
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    container1_cpu = st.slider(
-                        "CPU Request",
-                        0.1,
-                        float(cpu_cores_req),
-                        0.5,
-                        0.1,
-                        key="container1_cpu",
-                    )
-                with col2:
-                    container1_memory = st.slider(
-                        "Memory (MB)", 32, 1024, 128, 32, key="container1_memory"
-                    )
+            # Create a list to store all container data
+            containers_data = []
 
-            # Option to add a second container
-            add_second_container = st.checkbox(
-                "Add second container", key="add_second_container"
-            )
-
-            container2_data = None
-            if add_second_container:
-                with st.expander("Container 2", expanded=True):
-                    container2_name = st.text_input(
-                        "Container Name", key="container2_name"
+            # Generate container expanders dynamically
+            for i in range(1, num_containers + 1):
+                with st.expander(f"Container {i}", expanded=(i==1)):
+                    container_name = st.text_input(f"Container {i} Name", key=f"container{i}_name", value=f"container-{i}")
+                    
+                    container_image = st.text_input(
+                        f"Container {i} Image", 
+                        value="nginx:latest", 
+                        key=f"container{i}_image",
+                        help="Docker image for the container (e.g., nginx:latest)"
                     )
-                    container2_image = st.text_input(
-                        "Container Image", "redis:latest", key="container2_image"
-                    )
-
+                    
                     col1, col2 = st.columns(2)
                     with col1:
-                        container2_cpu = st.slider(
-                            "CPU Request",
-                            0.1,
-                            float(cpu_cores_req) - container1_cpu,
-                            0.5,
-                            0.1,
-                            key="container2_cpu",
+                        container_cpu = st.number_input(
+                            f"CPU Request (cores)", 
+                            min_value=0.1, 
+                            max_value=4.0, 
+                            value=0.5, 
+                            step=0.1,
+                            key=f"container{i}_cpu"
                         )
+                    
                     with col2:
-                        container2_memory = st.slider(
-                            "Memory (MB)", 32, 1024, 128, 32, key="container2_memory"
+                        container_memory = st.number_input(
+                            f"Memory Request (MB)", 
+                            min_value=64, 
+                            max_value=4096, 
+                            value=256, 
+                            step=64,
+                            key=f"container{i}_memory"
                         )
-
-                container2_data = {
-                    "name": container2_name,
-                    "image": container2_image,
-                    "cpu_req": container2_cpu,
-                    "memory_req": container2_memory,
-                }
+                    
+                    # Optional container command and args
+                    show_advanced = st.checkbox(f"Show advanced options", key=f"container{i}_advanced")
+                    
+                    container_command = None
+                    container_args = None
+                    
+                    if show_advanced:
+                        container_command = st.text_input(
+                            f"Command (optional)", 
+                            key=f"container{i}_command",
+                            help="Override container entrypoint"
+                        )
+                        
+                        container_args = st.text_input(
+                            f"Arguments (optional)", 
+                            key=f"container{i}_args",
+                            help="Command arguments"
+                        )
+                    
+                    # Add this container to the list
+                    container_data = {
+                        "name": container_name,
+                        "image": container_image,
+                        "cpu_req": container_cpu,
+                        "memory_req": container_memory
+                    }
+                    
+                    if show_advanced and container_command:
+                        container_data["command"] = container_command
+                    
+                    if show_advanced and container_args:
+                        container_data["args"] = container_args
+                        
+                    containers_data.append(container_data)
 
             # Advanced options: Volumes and Configuration
-            add_volume = st.checkbox("Add volume", key="add_volume")
-            volume_data = None
-            if add_volume:
-                with st.expander("Volume Configuration", expanded=True):
-                    volume_name = st.text_input("Volume Name", key="volume_name")
-                    volume_type = st.selectbox(
-                        "Volume Type", ["emptyDir", "hostPath"], key="volume_type"
-                    )
-                    volume_size = st.slider(
-                        "Volume Size (GB)", 1, 10, 1, key="volume_size"
-                    )
-                    volume_path = st.text_input(
-                        "Mount Path", "/data", key="volume_path"
-                    )
+            add_volumes = st.checkbox("Add volumes", key="add_volumes")
+            volumes_data = []
 
-                volume_data = {
-                    "name": volume_name,
-                    "type": volume_type,
-                    "size": volume_size,
-                    "path": volume_path,
-                }
+            if add_volumes:
+                # Let user select number of volumes
+                num_volumes = st.number_input("Number of volumes", min_value=1, max_value=5, value=1, key="num_volumes")
+                
+                # Generate volume expanders dynamically
+                for i in range(1, num_volumes + 1):
+                    with st.expander(f"Volume {i}", expanded=(i==1)):
+                        volume_name = st.text_input(f"Volume {i} Name", key=f"volume{i}_name", value=f"volume-{i}")
+                        
+                        volume_type = st.selectbox(
+                            f"Volume {i} Type", 
+                            ["emptyDir", "hostPath", "configMap", "secret"], 
+                            key=f"volume{i}_type"
+                        )
+                        
+                        volume_size = st.slider(
+                            f"Volume {i} Size (GB)", 
+                            min_value=1, 
+                            max_value=10, 
+                            value=1, 
+                            key=f"volume{i}_size"
+                        )
+                        
+                        volume_path = st.text_input(
+                            f"Mount Path", 
+                            value=f"/data/vol{i}", 
+                            key=f"volume{i}_path",
+                            help="Path where volume will be mounted in containers"
+                        )
+                        
+                        # Add this volume to the list
+                        volumes_data.append({
+                            "name": volume_name,
+                            "type": volume_type,
+                            "size": volume_size,
+                            "path": volume_path
+                        })
 
+            # Keep the configuration section as is
             add_config = st.checkbox("Add configuration", key="add_config")
             config_data = None
             if add_config:
@@ -1473,47 +1508,39 @@ elif page == "Create Resources":
             submit_button = st.form_submit_button("Create Pod")
 
             if submit_button:
+                # Form validation
                 if not pod_name:
-                    st.error("Pod name is required.")
-                elif not container1_name:
-                    st.error("Container name is required.")
+                    st.error("Pod name is required")
+                elif not containers_data:
+                    st.error("At least one container is required")
                 else:
-                    # Create pod
+                    # Prepare pod data
+                    pod_data = {
+                        "name": pod_name,
+                        "cpu_cores_req": cpu_cores_req,
+                        "containers": containers_data
+                    }
+                    
+                    # Add volumes if provided
+                    if volumes_data:
+                        pod_data["volumes"] = volumes_data
+                    
+                    # Add config if provided
+                    if config_data:
+                        pod_data["config"] = [config_data]
+                    
+                    # Create the pod
                     try:
-                        containers = [
-                            {
-                                "name": container1_name,
-                                "image": container1_image,
-                                "cpu_req": container1_cpu,
-                                "memory_req": container1_memory,
-                            }
-                        ]
-
-                        if container2_data and container2_data["name"]:
-                            containers.append(container2_data)
-
-                        pod_data = {
-                            "name": pod_name,
-                            "cpu_cores_req": cpu_cores_req,
-                            "containers": containers,
-                        }
-
-                        if volume_data and volume_data["name"]:
-                            pod_data["volumes"] = [volume_data]
-
-                        if config_data and config_data["name"]:
-                            pod_data["config"] = [config_data]
-
-                        response = requests.post(f"{API_BASE}/pods/", json=pod_data)
-
-                        if response.status_code == 200:
-                            st.success(f"Pod '{pod_name}' created successfully!")
-                            # Show the pod details
-                            st.json(response.json())
-                            # Refresh pod data
-                            refresh_data()
-                        else:
-                            st.error(f"Failed to create pod: {response.text}")
+                        with st.spinner("Creating pod..."):
+                            response = requests.post(f"{API_BASE}/pods/", json=pod_data)
+                            
+                            if response.status_code == 200:
+                                st.success(f"Pod '{pod_name}' created successfully!")
+                                st.json(response.json())
+                                # Refresh data
+                                refresh_data()
+                            else:
+                                st.error(f"Failed to create pod: {response.text}")
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
 

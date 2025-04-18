@@ -77,10 +77,8 @@ def cleanup_initializing_nodes():
                             from services.docker_service import DockerService
 
                             docker_service = DockerService()
-                            docker_service.stop_node_container(node.docker_container_id)
-                            docker_service.remove_node_container(
-                                node.docker_container_id
-                            )
+                            docker_service.stop_container(node.docker_container_id, is_node=True)
+                            docker_service.remove_container(node.docker_container_id, is_node=True, force=True)
                         except Exception as e:
                             app.logger.warning(f"Error cleaning up container: {str(e)}")
 

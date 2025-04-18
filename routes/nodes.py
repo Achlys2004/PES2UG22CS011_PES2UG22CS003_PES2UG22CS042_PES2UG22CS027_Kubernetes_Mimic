@@ -252,11 +252,7 @@ def get_node(node_id):
     node = Node.query.get_or_404(node_id)
 
     # Get container status
-    container_info = {"status": "unknown"}
-    if node.docker_container_id:
-        container_info = docker_service.get_node_container_info(
-            node.docker_container_id
-        )
+    container_info = docker_service.get_container_info(node.docker_container_id, detailed=True)
 
     return (
         jsonify(
