@@ -40,10 +40,13 @@ class DockerService:
             return "host.docker.internal"
 
     def create_node_container(
-        self, node_id, node_name, cpu_cores, node_type="worker", port=None
+        self, node_id, node_name, cpu_cores, node_type="worker", api_server="http://localhost:5000"
     ):
         """Create a Docker container to simulate a node"""
         try:
+            # Change this line to:
+            api_server = "http://host.docker.internal:5000"
+            
             # Try to remove any existing containers with the same name
             container_name = f"kube9-node-{node_name}"
             try:
@@ -55,12 +58,8 @@ class DockerService:
             except:
                 pass  # Container doesn't exist, which is fine
 
-            host_ip = self.get_host_ip()
-            api_server = f"http://{host_ip}:5000"
-
-            # Generate a port for the node
-            if port is None:
-                port = 5000 + node_id if node_id > 0 else 5001
+            # Generate a unique host port for this node (5000 + node_id)
+            host_port = 5000 + node_id
 
             # Build node simulator image if it doesn't exist
             try:
@@ -76,20 +75,20 @@ class DockerService:
                 )
                 self.logger.info("kube9-node-simulator image built successfully")
 
-            # Create the container with the correct node ID from the start
+            # Create the container with proper port mapping
             container = self.client.containers.run(
                 image="kube9-node-simulator",
                 name=container_name,
                 detach=True,
                 environment={
-                    "NODE_ID": str(node_id),  # Set correct ID immediately
+                    "NODE_ID": str(node_id),
                     "NODE_NAME": node_name,
                     "CPU_CORES": str(cpu_cores),
                     "NODE_TYPE": node_type,
                     "API_SERVER": api_server,
                 },
                 network=self.node_network_name,
-                ports={"5000/tcp": port},
+                ports={"5000/tcp": host_port},  # Map container's 5000 to host_port
                 restart_policy={"Name": "unless-stopped"},
                 cpu_quota=int(cpu_cores * 100000),  # Docker CPU quota in microseconds
                 mem_limit=f"{cpu_cores * 512}m",  # 512MB per CPU core
@@ -101,18 +100,8 @@ class DockerService:
             # Wait a moment for the container to start
             time.sleep(2)
 
-            # Get container IP address
-            container.reload()
-            container_ip = container.attrs["NetworkSettings"]["Networks"][
-                self.node_network_name
-            ]["IPAddress"]
-
-            return {
-                "container_id": container.id,
-                "name": container_name,
-                "node_ip": container_ip,
-                "node_port": port,
-            }
+            # Use localhost and mapped port instead of container IP
+            return container.id, "localhost", host_port  # Return container ID, localhost, and the mapped host port
         except Exception as e:
             self.logger.error(f"Failed to create node container: {str(e)}")
             raise

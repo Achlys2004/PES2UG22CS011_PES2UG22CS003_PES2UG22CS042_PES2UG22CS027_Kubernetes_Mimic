@@ -7,6 +7,7 @@ import json
 import logging
 import signal
 import sys
+import subprocess
 
 app = Flask(__name__)
 
@@ -55,6 +56,9 @@ if NODE_TYPE == "master":
 
 # Heartbeat configuration
 HEARTBEAT_INTERVAL = 60  # seconds
+
+# Global dictionary to track processes
+pod_processes = {}
 
 
 def send_heartbeat():
@@ -158,24 +162,52 @@ def add_pod():
 @app.route("/pods/<pod_id>", methods=["DELETE"])
 def remove_pod(pod_id):
     """Remove a pod from this node"""
-    if pod_id not in node_state["pod_ids"]:
-        return jsonify({"error": "Pod not found on this node"}), 404
+    str_pod_id = str(pod_id)
+
+    # Check if pod exists
+    if str_pod_id not in pod_processes:
+        return jsonify({"error": f"Pod {pod_id} not found on this node"}), 404
 
     # Get CPU cores to return
     try:
-        response = requests.get(f"{API_SERVER}/pods/{pod_id}")
-        if response.status_code == 200:
-            pod_data = response.json()
-            cpu_cores_req = pod_data.get("cpu_cores_req", 1)
-        else:
-            # Default if pod information can't be retrieved
-            cpu_cores_req = 1
-    except Exception:
+        pod_spec = pod_processes[str_pod_id]["spec"]
+        cpu_cores_req = pod_spec.get("cpu_cores_req", 1)
+    except:
         cpu_cores_req = 1
 
-    # Remove pod from node
-    node_state["pod_ids"].remove(pod_id)
+    # Terminate all processes in the pod
+    for container in pod_processes[str_pod_id]["processes"]:
+        try:
+            if container.get("process"):
+                container["process"].terminate()
+                try:
+                    container["process"].wait(timeout=5)
+                except:
+                    # Force kill if termination times out
+                    container["process"].kill()
+
+            logger.info(f"Terminated process for container {container['name']}")
+        except Exception as e:
+            logger.error(f"Error terminating container {container['name']}: {str(e)}")
+
+    # Clean up pod directory
+    try:
+        import shutil
+
+        pod_dir = pod_processes[str_pod_id]["directory"]
+        shutil.rmtree(pod_dir, ignore_errors=True)
+    except Exception as e:
+        logger.error(f"Error removing pod directory: {str(e)}")
+
+    # Remove pod from tracking
+    del pod_processes[str_pod_id]
+
+    # Update node state
+    if pod_id in node_state["pod_ids"]:
+        node_state["pod_ids"].remove(pod_id)
+
     node_state["cpu_cores_avail"] += cpu_cores_req
+
     logger.info(
         f"Removed pod {pod_id} from node. Available CPU: {node_state['cpu_cores_avail']}"
     )
@@ -200,20 +232,216 @@ def update_component(component):
         return jsonify({"error": f"Component {component} not found"}), 404
 
 
-@app.route("/simulate/failure", methods=["POST"])
-def simulate_failure():
-    """Simulate node failure"""
-    node_state["health_status"] = "failed"
-    logger.warning("Node failure simulated!")
-    return jsonify({"message": "Node failure simulated"}), 200
+@app.route("/run_pod", methods=["POST"])
+def run_pod():
+    """Run a pod as one or more processes inside this node container"""
+    data = request.get_json()
+    pod_id = data.get("pod_id")
+    pod_spec = data.get("pod_spec")
+
+    if not pod_id or not pod_spec:
+        return jsonify({"error": "Missing pod_id or pod_spec"}), 400
+
+    # Check if we have enough resources
+    cpu_cores_req = pod_spec.get("cpu_cores_req", 1)
+    if node_state["cpu_cores_avail"] < cpu_cores_req:
+        return jsonify({"error": "Insufficient CPU resources"}), 400
+
+    # Create a unique working directory for the pod
+    pod_dir = f"/tmp/pod-{pod_id}"
+    os.makedirs(pod_dir, exist_ok=True)
+
+    # Start processes for each container in the pod
+    processes = []
+    pod_status = {"containers": []}
+
+    for container_spec in pod_spec.get("containers", []):
+        container_name = container_spec.get("name", f"container-{pod_id}")
+        container_id = f"{pod_id}-{container_name}"
+        image = container_spec.get("image", "busybox")
+        command = container_spec.get("command", "sleep infinity")
+
+        # Prepare environment variables
+        env_vars = os.environ.copy()
+        for key, value in pod_spec.get("environment", {}).items():
+            env_vars[key] = value
+
+        # Add container-specific environment variables
+        env_vars["CONTAINER_NAME"] = container_name
+        env_vars["POD_ID"] = str(pod_id)
+        env_vars["POD_IP"] = pod_spec.get("ip_address", "10.244.0.1")
+
+        # Create log file for the container
+        log_file = open(f"{pod_dir}/{container_name}.log", "w")
+
+        try:
+            logger.info(f"Starting container {container_name} with command: {command}")
+
+            # Choose process behavior based on simulated image
+            if "nginx" in image:
+                process_thread = threading.Thread(
+                    target=simulate_container,
+                    args=(container_name, "nginx", pod_dir, log_file, env_vars),
+                )
+                process_thread.daemon = True
+                process_thread.start()
+
+                container_status = "running"
+
+            elif "redis" in image:
+                process_thread = threading.Thread(
+                    target=simulate_container,
+                    args=(container_name, "redis", pod_dir, log_file, env_vars),
+                )
+                process_thread.daemon = True
+                process_thread.start()
+
+                container_status = "running"
+
+            else:
+                # For other images, just run sleep to simulate a process
+                proc = subprocess.Popen(
+                    ["sleep", "infinity"],
+                    stdout=log_file,
+                    stderr=log_file,
+                    env=env_vars,
+                )
+                process_thread = None
+                container_status = "running"
+
+            # Store process information
+            process_info = {
+                "process": proc if "proc" in locals() else None,
+                "thread": process_thread,
+                "name": container_name,
+                "image": image,
+                "start_time": time.time(),
+                "status": container_status,
+                "log_file": log_file.name,
+            }
+
+            pod_status["containers"].append(
+                {"name": container_name, "image": image, "status": container_status}
+            )
+
+            processes.append(process_info)
+            logger.info(f"Container {container_name} started")
+
+        except Exception as e:
+            logger.error(f"Failed to start container {container_name}: {str(e)}")
+            log_file.write(f"Error starting container: {str(e)}\n")
+            log_file.close()
+
+            # Clean up any processes we already started
+            for p in processes:
+                try:
+                    if p.get("process"):
+                        p["process"].terminate()
+                    if p.get("thread") and p["thread"].is_alive():
+                        pass  # Can't easily terminate threads
+                except:
+                    pass
+
+            return jsonify(
+                {"error": f"Failed to start container {container_name}: {str(e)}"}
+            ), 500
+
+    # Store pod information
+    pod_processes[str(pod_id)] = {
+        "processes": processes,
+        "spec": pod_spec,
+        "status": "running",
+        "start_time": time.time(),
+        "directory": pod_dir,
+    }
+
+    # Add pod to node's list and update resources
+    if pod_id not in node_state["pod_ids"]:
+        node_state["pod_ids"].append(pod_id)
+
+    node_state["cpu_cores_avail"] -= cpu_cores_req
+
+    return (
+        jsonify(
+            {
+                "status": "success",
+                "message": f"Pod {pod_id} started with {len(processes)} containers",
+                "pod_status": pod_status,
+            }
+        ),
+        200,
+    )
 
 
-@app.route("/simulate/recovery", methods=["POST"])
-def simulate_recovery():
-    """Simulate node recovery"""
-    node_state["health_status"] = "healthy"
-    logger.info("Node recovery simulated!")
-    return jsonify({"message": "Node recovery simulated"}), 200
+def simulate_container(container_name, container_type, pod_dir, log_file, env_vars):
+    """Simulate container process behavior"""
+    try:
+        # Write startup message
+        log_file.write(f"Starting {container_type} container simulation\n")
+        log_file.flush()
+
+        # Simulate running container
+        while True:
+            # Write periodic message to simulate activity
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            log_file.write(f"[{timestamp}] {container_type} simulation heartbeat\n")
+            log_file.flush()
+
+            # Different simulated behavior based on container type
+            if container_type == "nginx":
+                log_file.write(
+                    f"[{timestamp}] Simulated nginx: Handling HTTP request\n"
+                )
+            elif container_type == "redis":
+                log_file.write(f"[{timestamp}] Simulated redis: Cache operation\n")
+
+            time.sleep(10)
+    except Exception as e:
+        log_file.write(f"Error in container simulation: {str(e)}\n")
+    finally:
+        log_file.write("Container simulation terminated\n")
+        log_file.close()
+
+
+@app.route("/pods/<pod_id>/status", methods=["GET"])
+def get_pod_status(pod_id):
+    """Get status of a pod's processes"""
+    str_pod_id = str(pod_id)
+
+    if str_pod_id not in pod_processes:
+        return jsonify({"error": f"Pod {pod_id} not found on this node"}), 404
+
+    pod = pod_processes[str_pod_id]
+    containers = []
+    all_running = True
+
+    for container in pod["processes"]:
+        # Check if process is still running
+        is_running = True
+
+        if container.get("process"):
+            is_running = container["process"].poll() is None
+
+        status = "running" if is_running else "exited"
+        all_running = all_running and is_running
+
+        containers.append(
+            {
+                "name": container["name"],
+                "image": container["image"],
+                "status": status,
+                "start_time": container["start_time"],
+            }
+        )
+
+    overall_status = "running" if all_running else "failed"
+
+    return (
+        jsonify(
+            {"pod_id": pod_id, "status": overall_status, "containers": containers}
+        ),
+        200,
+    )
 
 
 def graceful_shutdown(sig, frame):

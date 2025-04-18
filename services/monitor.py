@@ -1,13 +1,13 @@
 import time
 import threading
 import requests
-from models import data, Container, Pod, Node, Volume, ConfigItem
+from models import data, Pod, Node, Volume, ConfigItem
 from services.docker_service import DockerService
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import random
 import ipaddress
 import logging
-from random import randint
+from routes.pods import build_pod_spec
 
 # Standardized timing intervals
 HEARTBEAT_INTERVAL = 60  # seconds
@@ -183,10 +183,8 @@ class DockerMonitor:
                         time.sleep(5)
                         continue
 
-                    # Get current list of nodes excluding permanently failed ones
-                    nodes = Node.query.filter(
-                        Node.health_status != "permanently_failed"
-                    ).all()
+                    # Get all nodes
+                    nodes = Node.query.all()
 
                     for node in nodes:
                         try:
@@ -198,6 +196,15 @@ class DockerMonitor:
                                 )
                                 continue
 
+                            # Check if node is permanently failed and trigger rescheduling if needed
+                            if node.health_status == "permanently_failed" and len(node.pod_ids) > 0:
+                                self.logger.info(
+                                    f"Found permanently failed node {node.name} with pods - triggering rescheduling"
+                                )
+                                self.need_rescheduling = True
+                                continue
+
+                            # Skip early if no heartbeat data
                             if node.last_heartbeat is None:
                                 continue
 
@@ -218,9 +225,13 @@ class DockerMonitor:
                                     f"Node {node.name} missed heartbeat for {interval:.1f}s, marking as failed"
                                 )
                                 node.health_status = "failed"
-                                node.recovery_attempts = (
-                                    1  # Start at 1 instead of incrementing from 0
-                                )
+                                
+                                # Increment recovery attempts instead of resetting to 1
+                                if node.recovery_attempts is None or node.recovery_attempts == 0:
+                                    node.recovery_attempts = 1
+                                else:
+                                    node.recovery_attempts += 1
+                                
                                 data.session.commit()
 
                         except Exception as e:
@@ -389,7 +400,8 @@ class DockerMonitor:
                         time.sleep(5)
                         continue
 
-                    # Refresh database session
+                    # Refresh database session and ensure no active transaction
+                    data.session.rollback()
                     data.session.expire_all()
 
                     self.logger.info("[RESCHEDULE] Starting pod rescheduling process")
@@ -428,6 +440,9 @@ class DockerMonitor:
                         # Process each pod that needs rescheduling
                         for pod in pods_to_reschedule:
                             try:
+                                # Ensure any previous transaction is closed
+                                data.session.rollback()
+                                
                                 # Start a new transaction for each pod
                                 data.session.begin()
 
@@ -454,7 +469,36 @@ class DockerMonitor:
                                     self.logger.warning(
                                         f"[RESCHEDULE] No eligible nodes found for pod {pod.name} (ID: {pod.id}) requiring {pod.cpu_cores_req} CPU cores"
                                     )
-                                    data.session.rollback()
+                                    
+                                    # Since no eligible nodes are available, terminate the pod completely
+                                    self.logger.info(
+                                        f"[RESCHEDULE] Terminating pod {pod.name} (ID: {pod.id}) due to lack of eligible nodes"
+                                    )
+                                    
+                                    try:
+                                        try:
+                                            for container in pod.containers:
+                                                self.logger.info(f"[RESCHEDULE] Cleaning up container {container.name} for pod {pod.name}")
+                                                # If we had container IDs stored, we would stop them here
+                                        except Exception as container_error:
+                                            self.logger.error(f"[RESCHEDULE] Error cleaning up containers: {str(container_error)}")
+                                        
+                                        # Remove pod from failed node's pod list
+                                        failed_node.remove_pod(pod.id)
+                                        
+                                        # Delete the pod from database (cascade will handle related entities)
+                                        data.session.delete(pod)
+                                        data.session.commit()
+                                        
+                                        self.logger.info(
+                                            f"[RESCHEDULE] Successfully terminated pod {pod.name} (ID: {pod.id}) due to lack of available nodes"
+                                        )
+                                    except Exception as delete_error:
+                                        self.logger.error(
+                                            f"[RESCHEDULE] Error terminating pod {pod.id}: {str(delete_error)}"
+                                        )
+                                        data.session.rollback()
+                                    
                                     continue
 
                                 # Best-Fit: Select node with minimum available resources
@@ -471,102 +515,31 @@ class DockerMonitor:
                                 network = ipaddress.ip_network(f"{base_ip}/16")
                                 random_ip = str(random.choice(list(network.hosts())))
 
-                                # Create Docker resources
+                                # Create pod specification to send to target node
                                 try:
-                                    # Create network for the pod
-                                    unique_id = str(uuid.uuid4())[:8]
-                                    network_name = f"pod-network-{pod.id}-{unique_id}"
-                                    network_id = self.docker_service.create_network(
-                                        network_name
-                                    )
+                                    pod_spec = build_pod_spec(pod)
+                                    pod_spec["ip_address"] = random_ip
 
-                                    # Update pod with new network ID and IP
-                                    old_network_id = pod.docker_network_id
-                                    pod.docker_network_id = network_id
-                                    pod.ip_address = random_ip
-
-                                    # Create volumes for the pod
-                                    for volume in pod.volumes:
-                                        volume_name = f"pod-{pod.id}-volume-{volume.id}-{unique_id}"
-                                        docker_volume = (
-                                            self.docker_service.create_volume(
-                                                volume_name
-                                            )
+                                    # Send request to target node to run pod as processes
+                                    if target_node.node_ip:
+                                        response = requests.post(
+                                            f"http://{target_node.node_ip}:{target_node.node_port}/run_pod",
+                                            json={
+                                                "pod_id": pod.id,
+                                                "pod_spec": pod_spec
+                                            },
+                                            timeout=10
                                         )
-                                        volume.docker_volume_name = docker_volume
-
-                                    # Recreate containers
-                                    for container in pod.containers:
-                                        # Prepare environment variables
-                                        env_vars = {}
-                                        for config in pod.config_items:
-                                            if config.config_type == "env":
-                                                env_vars[config.key] = config.value
-
-                                        # Prepare volume mounts
-                                        volume_mounts = {}
-                                        for volume in pod.volumes:
-                                            volume_mounts[volume.docker_volume_name] = {
-                                                "bind": volume.path,
-                                                "mode": "rw",
-                                            }
-
-                                        # Create container
-                                        container_name = (
-                                            f"pod-{pod.id}-{container.name}-{unique_id}"
-                                        )
-                                        container_id = (
-                                            self.docker_service.create_container(
-                                                name=container_name,
-                                                image=container.image,
-                                                command=container.command,
-                                                environment=env_vars,
-                                                volumes=(
-                                                    volume_mounts
-                                                    if volume_mounts
-                                                    else None
-                                                ),
-                                                network=network_name,
-                                                cpu_limit=container.cpu_req,
-                                                memory_limit=f"{container.memory_req}m",
-                                            )
-                                        )
-
-                                        # Clean up old container if possible
-                                        if container.docker_container_id:
-                                            try:
-                                                self.docker_service.remove_container(
-                                                    container.docker_container_id,
-                                                    force=True,
-                                                )
-                                            except Exception as e:
-                                                self.logger.warning(
-                                                    f"[RESCHEDULE] Error removing old container: {str(e)}"
-                                                )
-
-                                        # Update container with new ID and start it
-                                        container.docker_container_id = container_id
-                                        self.docker_service.start_container(
-                                            container_id
-                                        )
-                                        container.status = "running"
-                                        container.docker_status = "running"
-
-                                    # Clean up old network if possible
-                                    if old_network_id:
-                                        try:
-                                            self.docker_service.remove_network(
-                                                old_network_id
-                                            )
-                                        except Exception as e:
-                                            self.logger.warning(
-                                                f"[RESCHEDULE] Error removing old network: {str(e)}"
-                                            )
-
+                                        
+                                        if response.status_code != 200:
+                                            raise Exception(f"Target node responded with status {response.status_code}")
+                                        
+                                        self.logger.info(f"Successfully created pod processes on target node {target_node.name}")
+                                    else:
+                                        raise Exception("Target node IP address not available")
+                                
                                 except Exception as e:
-                                    self.logger.error(
-                                        f"[RESCHEDULE] Error creating Docker resources: {str(e)}"
-                                    )
+                                    self.logger.error(f"Error creating pod processes on target node: {str(e)}")
                                     data.session.rollback()
                                     continue
 
@@ -624,3 +597,8 @@ class DockerMonitor:
                     data.session.rollback()
 
                 time.sleep(RESCHEDULER_INTERVAL)
+
+    def trigger_pod_rescheduling(self):
+        """Directly trigger the pod rescheduling process"""
+        self.need_rescheduling = True
+        self.logger.info("[RESCHEDULE] Pod rescheduling triggered manually")

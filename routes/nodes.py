@@ -53,17 +53,16 @@ def create_node():
         data.session.flush()  # Get the node ID without committing
 
         # Create and start container - pass the known node ID
-        node_container = docker_service.create_node_container(
-            node_id=node.id,
-            node_name=payload["name"],
-            cpu_cores=payload["cpu_cores_avail"],
-            node_type=node_type,
+        container_id, node_ip, node_port = docker_service.create_node_container(
+            node.id, node.name, node.cpu_cores_total, node.node_type
         )
 
         # Update node with container details
-        node.docker_container_id = node_container["container_id"]
-        node.node_ip = node_container["node_ip"]
-        node.node_port = node_container["node_port"]
+        node.docker_container_id = container_id
+        node.node_ip = node_ip  # This will be "localhost"
+        node.node_port = (
+            node_port  # This will be the mapped host port (5004, 5005, etc.)
+        )
 
         # Commit to database
         data.session.commit()
@@ -167,8 +166,7 @@ def get_nodes_health():
 
 
 @nodes_bp.route("/<int:node_id>/heartbeat", methods=["POST"])
-def update_node_heartbeat(node_id):
-    """Process heartbeat from a node"""
+def update_heartbeat(node_id):
     try:
         # Get the node by ID
         node = Node.query.get(node_id)
@@ -184,7 +182,37 @@ def update_node_heartbeat(node_id):
         # Update heartbeat timestamp
         node.last_heartbeat = datetime.now(timezone.utc)
 
-        # Update component status
+        # IMPORTANT: Get the incoming status but DON'T apply it yet
+        health_status = payload.get("health_status", "healthy")
+
+        # Check if node is permanently failed BEFORE updating status
+        if node.health_status == "permanently_failed":
+            current_app.logger.info(
+                f"[HEARTBEAT] Ignoring heartbeat status update for permanently failed node {node.name} (ID: {node.id})"
+            )
+
+            # Ensure rescheduler is triggered if there are still pods
+            if node.pod_ids:
+                monitor = current_app.config.get("DOCKER_MONITOR")
+                if monitor:
+                    monitor.need_rescheduling = True
+                    current_app.logger.info(
+                        f"[HEARTBEAT] Triggering pod rescheduler for permanently failed node {node.name} with {len(node.pod_ids)} pods"
+                    )
+        else:
+            # Only update health status if node is NOT permanently failed
+            node.health_status = health_status
+
+            # If node reports itself as permanently failed, trigger rescheduling
+            if health_status == "permanently_failed":
+                current_app.logger.info(
+                    f"[HEARTBEAT] Node {node.name} (ID: {node.id}) reported itself as permanently_failed, triggering pod rescheduler"
+                )
+                monitor = current_app.config.get("DOCKER_MONITOR")
+                if monitor:
+                    monitor.need_rescheduling = True
+
+        # Continue with other updates...
         components = payload.get("components", {})
         if "kubelet" in components:
             node.kubelet_status = components["kubelet"]
@@ -195,21 +223,12 @@ def update_node_heartbeat(node_id):
         if "node_agent" in components:
             node.node_agent_status = components["node_agent"]
 
-        # Only update status if node was in recovery mode or specified in heartbeat
-        if node.health_status == "recovering":
-            node.health_status = "healthy"
-            current_app.logger.info(
-                f"[HEARTBEAT] Node {node.name} (ID: {node.id}) recovery complete - now healthy"
-            )
-        elif "health_status" in payload:
-            node.health_status = payload["health_status"]
-
         # Update CPU availability if provided
         if "cpu_cores_avail" in payload:
             node.cpu_cores_avail = payload["cpu_cores_avail"]
 
-        # Update pod IDs if provided
-        if "pod_ids" in payload:
+        # Update pod IDs if provided (but not for permanently failed nodes)
+        if "pod_ids" in payload and node.health_status != "permanently_failed":
             node.pod_ids = payload["pod_ids"]
 
         data.session.commit()
@@ -398,7 +417,7 @@ def send_heartbeats(app):
                                 f"Missing heartbeat for {interval:.1f}s (max: {node.max_heartbeat_interval}s)"
                             )
                             node.health_status = "failed"
-                            node.recovery_attempts = 1
+                            node.recovery_attempts += 1
                             updated_nodes.append(node.id)
 
                         elif node.health_status == "recovering":

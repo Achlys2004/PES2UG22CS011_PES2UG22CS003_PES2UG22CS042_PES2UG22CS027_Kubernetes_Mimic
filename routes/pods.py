@@ -10,6 +10,36 @@ pods_bp = Blueprint("pods", __name__)
 docker_service = DockerService()
 
 
+def build_pod_spec(pod):
+    """Build a pod specification to send to nodes"""
+    pod_spec = {
+        "name": pod.name,
+        "cpu_cores_req": pod.cpu_cores_req,
+        "ip_address": pod.ip_address,
+        "containers": [],
+        "environment": {}
+    }
+    
+    # Add container specifications
+    for container in pod.containers:
+        container_spec = {
+            "name": container.name,
+            "image": container.image, 
+            "command": container.command,
+            "args": container.args,
+            "cpu_req": container.cpu_req,
+            "memory_req": container.memory_req
+        }
+        pod_spec["containers"].append(container_spec)
+    
+    # Add environment variables from config
+    for config in pod.config_items:
+        if config.config_type == "env":
+            pod_spec["environment"][config.key] = config.value
+    
+    return pod_spec
+
+
 @pods_bp.route("/", methods=["POST"])
 def add_pod():
     """Create a new pod and schedule it on a node"""
@@ -125,107 +155,49 @@ def add_pod():
         for container in new_pod.containers:
             container.status = "running"
 
-        # Create Docker resources
+        # Create pod specification to send to the node
         try:
-            unique_id = str(uuid.uuid4())[:8]
-            network_name = f"pod-network-{new_pod.id}-{unique_id}"
-            network_id = docker_service.create_network(network_name)
-            new_pod.docker_network_id = network_id
-
-            # Create volumes
-            for volume in new_pod.volumes:
-                volume_name = f"pod-{new_pod.id}-volume-{volume.id}"
-                docker_volume = docker_service.create_volume(volume_name)
-                volume.docker_volume_name = docker_volume
-
-            # Create and start containers
-            for container in new_pod.containers:
-                # Prepare environment variables
-                env_vars = {}
-                for config in new_pod.config_items:
-                    if config.config_type == "env":
-                        env_vars[config.key] = config.value
-
-                # Prepare volume mounts
-                volume_mounts = {}
-                for volume in new_pod.volumes:
-                    volume_mounts[volume.docker_volume_name] = {
-                        "bind": volume.path,
-                        "mode": "rw",
-                    }
-
-                # Create container
-                container_name = f"pod-{new_pod.id}-{container.name}"
-                container_id = docker_service.create_container(
-                    name=container_name,
-                    image=container.image,
-                    command=container.command,
-                    environment=env_vars,
-                    volumes=volume_mounts if volume_mounts else None,
-                    network=network_name,
-                    cpu_limit=container.cpu_req,
-                    memory_limit=f"{container.memory_req}m",
+            pod_spec = build_pod_spec(new_pod)
+            
+            # Send request to the node to run the pod as processes
+            if node.node_ip:
+                response = requests.post(
+                    f"http://{node.node_ip}:{node.node_port}/run_pod",
+                    json={
+                        "pod_id": new_pod.id,
+                        "pod_spec": pod_spec
+                    },
+                    timeout=10
                 )
-
-                container.docker_container_id = container_id
-                docker_service.start_container(container_id)
-                container.status = "running"
-                container.docker_status = "running"
-
-            # Notify the node about the new pod
-            try:
-                if node.node_ip:
-                    response = requests.post(
-                        f"http://{node.node_ip}:5000/pods",
-                        json={
-                            "pod_id": new_pod.id,
-                            "cpu_cores_req": cpu_cores_req,
-                        },
-                        timeout=5,
-                    )
-
-                    if response.status_code != 200:
-                        current_app.logger.warning(
-                            f"Node {node.name} responded with status {response.status_code} "
-                            f"when adding pod: {response.text}"
-                        )
-            except Exception as e:
-                current_app.logger.warning(
-                    f"Failed to notify node about new pod: {str(e)}"
-                )
-
+                
+                if response.status_code != 200:
+                    raise Exception(f"Node responded with status {response.status_code}: {response.text}")
+                
+                # Update container status based on node response
+                pod_status = response.json().get("pod_status", {})
+                for container_status in pod_status.get("containers", []):
+                    for container in new_pod.containers:
+                        if container.name == container_status["name"]:
+                            container.status = container_status["status"]
+            else:
+                raise Exception("Node IP address not available")
+            
             # Add pod ID to node's pod list
             node.add_pod(new_pod.id)
-
+            
             # Commit all changes
             data.session.commit()
 
         except Exception as e:
-            # Cleanup on failure
-            current_app.logger.error(f"Error creating Docker resources: {str(e)}")
-
-            # Clean up containers
-            for container in new_pod.containers:
-                if container.docker_container_id:
-                    docker_service.remove_container(
-                        container.docker_container_id, force=True
-                    )
-
-            # Clean up network
-            if new_pod.docker_network_id:
-                docker_service.remove_network(new_pod.docker_network_id)
-
-            # Clean up volumes
-            for volume in new_pod.volumes:
-                if volume.docker_volume_name:
-                    docker_service.remove_volume(volume.docker_volume_name)
-
+            # Handle failures
+            current_app.logger.error(f"Error creating pod processes: {str(e)}")
+            
             # Mark pod as failed
             new_pod.health_status = "failed"
             data.session.commit()
-
+            
             # Return error to client
-            return jsonify({"error": f"Error creating Docker resources: {str(e)}"}), 500
+            return jsonify({"error": f"Error creating pod processes: {str(e)}"}), 500
 
         # Return success response
         return (
@@ -410,33 +382,18 @@ def delete_pod(pod_id):
         if not node:
             return jsonify({"error": "Associated node not found"}), 404
 
-        # Clean up Docker resources
-        try:
-            # Stop and remove containers
-            for container in pod.containers:
-                if container.docker_container_id:
-                    docker_service.stop_container(container.docker_container_id)
-                    docker_service.remove_container(
-                        container.docker_container_id, force=True
-                    )
-
-            # Remove network
-            if pod.docker_network_id:
-                docker_service.remove_network(pod.docker_network_id)
-
-            # Remove volumes
-            for volume in pod.volumes:
-                if volume.docker_volume_name:
-                    docker_service.remove_volume(volume.docker_volume_name)
-
-        except Exception as e:
-            current_app.logger.error(f"Error removing Docker resources: {str(e)}")
-            # Continue with pod deletion even if Docker resources cleanup fails
-
-        # Notify the node about pod removal
+        # Notify the node to terminate the pod's processes
         try:
             if node.node_ip:
-                requests.delete(f"http://{node.node_ip}:5000/pods/{pod_id}", timeout=5)
+                response = requests.delete(
+                    f"http://{node.node_ip}:5000/pods/{pod_id}", 
+                    timeout=5
+                )
+                
+                if response.status_code != 200:
+                    current_app.logger.warning(
+                        f"Node responded with status {response.status_code} when deleting pod: {response.text}"
+                    )
         except Exception as e:
             current_app.logger.warning(
                 f"Failed to notify node about pod deletion: {str(e)}"
@@ -462,32 +419,49 @@ def delete_pod(pod_id):
 
 @pods_bp.route("/<int:pod_id>/health", methods=["GET"])
 def check_pod_health(pod_id):
-    """Check the health of a pod"""
+    """Check the health of a pod by querying the hosting node"""
     pod = Pod.query.get_or_404(pod_id)
-
-    container_statuses = []
-    for container in pod.containers:
-        if container.docker_container_id:
-            current_status = docker_service.get_container_status(
-                container.docker_container_id
+    node = Node.query.get(pod.node_id)
+    
+    if not node:
+        return jsonify({"error": "Associated node not found"}), 404
+    
+    # Get health status directly from node
+    try:
+        if node.node_ip:
+            response = requests.get(
+                f"http://{node.node_ip}:5000/pods/{pod_id}/status",
+                timeout=5
             )
-            container_statuses.append(
-                {
-                    "container_id": container.id,
-                    "name": container.name,
-                    "image": container.image,
-                    "docker_status": current_status,
-                    "app_status": container.status,
-                }
-            )
-
-    health_data = {
-        "pod_id": pod.id,
-        "pod_name": pod.name,
-        "overall_status": pod.health_status,
-        "node_id": pod.node_id,
-        "node_name": pod.node.name if pod.node else "Unknown",
-        "containers": container_statuses,
-    }
-
-    return jsonify(health_data), 200
+            
+            if response.status_code == 200:
+                node_pod_status = response.json()
+                
+                # Update pod status in database if needed
+                if pod.health_status != node_pod_status["status"]:
+                    pod.health_status = node_pod_status["status"]
+                    data.session.commit()
+                    
+                return jsonify(node_pod_status), 200
+            else:
+                return jsonify({
+                    "pod_id": pod_id,
+                    "pod_name": pod.name,
+                    "overall_status": pod.health_status,
+                    "error": f"Node returned status {response.status_code}"
+                }), 200
+        else:
+            return jsonify({
+                "pod_id": pod_id,
+                "pod_name": pod.name,
+                "overall_status": pod.health_status,
+                "error": "Node IP address not available"
+            }), 200
+    except Exception as e:
+        current_app.logger.warning(f"Error checking pod status on node: {str(e)}")
+        return jsonify({
+            "pod_id": pod_id,
+            "pod_name": pod.name,
+            "overall_status": pod.health_status,
+            "error": f"Communication error: {str(e)}"
+        }), 200

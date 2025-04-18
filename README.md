@@ -13,6 +13,7 @@ Kube-9 is a lightweight Kubernetes-like system designed to simulate container or
 5. **Health Monitoring**: Monitor node and pod health with heartbeat mechanisms sent from node containers.
 6. **Node Recovery**: Attempt recovery of failed nodes by restarting their containers.
 7. **Pod Rescheduling**: Automatically reschedule pods from failed nodes to healthy ones.
+8. **Visual Dashboard**: Interactive Streamlit dashboard for monitoring and managing your cluster.
 
 ---
 
@@ -52,7 +53,7 @@ When creating pods, the system will:
 
 - Python 3.12
 - Docker installed and running
-- PostgreSQL or MySQL database
+- MySQL database
 - Required Python libraries (see `requirements.txt`)
 
 ---
@@ -63,7 +64,7 @@ When creating pods, the system will:
 
    ```bash
    git clone https://github.com/Achlys2004/PES2UG22CS011_PES2UG22CS003_PES2UG22CS042_PES2UG22CS027_Kubernetes_Mimic.git
-
+   
    ```
 
 2. Install dependencies:
@@ -72,7 +73,13 @@ When creating pods, the system will:
    pip install -r requirements.txt
    ```
 
-3. Configure the database in `config.py`.
+3. Configure the database in `config.py`:
+
+   ```python
+   # Example config.py
+   SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://username:password@localhost/cluster_db'
+   SQLALCHEMY_TRACK_MODIFICATIONS = False
+   ```
 
 4. Create the database:
 
@@ -87,9 +94,9 @@ When creating pods, the system will:
    flask db upgrade
    ```
 
-#### Note: To redo the flask-migrate
+#### Note: If you need to reset the database migrations
 
-```
+```bash
 # Remove the migrations folder
 rm -r migrations
 
@@ -110,18 +117,42 @@ flask db upgrade
 
 ## Running the Application
 
-1. Start the application:
+1. Start the main API server:
 
    ```bash
    python app.py
-   open a new terminal and run:
+   ```
+
+2. Start the dashboard in a separate terminal:
+
+   ```bash
    streamlit run dashboard.py
    ```
 
-2. Access the API at:
+3. Access the API at:
    ```
    http://localhost:5000/
    ```
+
+4. Access the dashboard at:
+   ```
+   http://localhost:8501/
+   ```
+
+---
+
+## Dashboard Features
+
+The Kube-9 dashboard provides a visual interface to manage and monitor your cluster:
+
+- **Overview**: View cluster statistics, resource utilization, and pod distribution
+- **Nodes Management**: Monitor node health, view component status, and perform operations
+- **Pods Management**: Track pod status, view container details, and manage deployments
+- **Resource Creation**: Create new nodes and pods through a user-friendly interface
+- **Health Monitoring**: Real-time health status with visual indicators
+- **Auto-refresh**: Configurable auto-refresh to keep data current
+
+![Dashboard Overview](https://placeholder-for-dashboard-screenshot.com/overview.png)
 
 ---
 
@@ -323,81 +354,107 @@ flask db upgrade
 
 ## Docker Integration
 
-1. **Build the Node Simulator Image**:
+Kube-9 uses Docker to simulate both nodes and pods:
 
-   ```bash
-   cd node_simulation
-   docker build -t kube-node .
-   ```
+1. **Node Containers**: Each node in the cluster is represented by a Docker container running the node simulator
 
-2. **Run Simulated Nodes**:
+2. **Pod Processes**: Within each node container, pods are simulated as processes
 
-   ```bash
-   docker run -d --name node1 -p 5001:5000 kube-node
-   docker run -d --name node2 -p 5002:5000 kube-node
-   docker run -d --name node3 -p 5003:5000 kube-node
-   ```
+3. **Container Networks**: Custom Docker networks are created for pod networking
 
-3. **Verify Docker Resources**:
+### Node Simulator Image
 
-   - **Check Initial Health Status**:
+The Node Simulator image is built automatically when creating the first node, but you can build it manually:
 
-     - **Method**: GET  
-       **URL**: `http://localhost:5000/nodes/health`
+```bash
+cd node_simulation
+docker build -t kube9-node-simulator .
+```
 
-   - **Send Test Heartbeat**:
+### Viewing Docker Resources
 
-     - **Method**: POST  
-       **URL**: `http://localhost:5000/nodes/1/heartbeat`
+To verify the Docker resources created by Kube-9:
 
-   - **Check Node Details**:
+- **View Running Containers**:
+  ```bash
+  docker ps | grep kube9-node
+  ```
 
-     - **Method**: GET  
-       **URL**: `http://localhost:5000/nodes/1`
+- **View Networks**:
+  ```bash
+  docker network ls | grep kube9
+  ```
 
-   - **Check Running Containers**:
-
-     ```bash
-     docker ps
-     ```
-
-   - **Check Docker Networks**:
-
-     ```bash
-     docker network ls | grep pod-network
-     ```
-
-   - **Check Docker Volumes**:
-     ```bash
-     docker volume ls | grep pod
-     ```
+- **View Container Logs**:
+  ```bash
+  docker logs <container_id>
+  ```
 
 ---
 
 ## Troubleshooting
 
-1. **Database Connection Issues**:
+### API Connection Issues
 
-   - Ensure the database is running and the credentials in `config.py` are correct.
-   - Test the connection using:
-     ```
-     python app.py
-     ```
+- **Symptom**: Cannot connect to API server
+- **Solutions**:
+  - Ensure the API server is running (`python app.py`)
+  - Check if port 5000 is available and not in use
+  - Verify firewall settings are not blocking the connection
 
-2. **Docker Issues**:
+### Database Connection Issues
 
-   - Ensure Docker is running:
-     ```bash
-     docker info
-     ```
-   - Verify Python has permissions to access Docker:
-     ```bash
-     docker ps
-     ```
+- **Symptom**: API server starts but shows database connection errors
+- **Solutions**:
+  - Verify MySQL is running: `sudo systemctl status mysql`
+  - Check database credentials in `config.py`
+  - Ensure the database exists: `mysql -u root -p -e "SHOW DATABASES;"`
+  - Test connection: `http://localhost:5000/test_db`
 
-3. **API Response Issues**:
-   - Check the application logs for detailed error information.
-   - Verify the JSON payload matches the expected format.
+### Node Creation Failures
+
+- **Symptom**: Cannot create nodes
+- **Solutions**:
+  - Ensure Docker is running: `docker info`
+  - Check Docker API access: `python -c "import docker; print(docker.from_env().containers.list())"`
+  - Verify the node image can be built: `cd node_simulation && docker build -t kube9-node-simulator .`
+  - Check API server logs for detailed error messages
+
+### Pod Creation Failures
+
+- **Symptom**: Cannot create pods
+- **Solutions**:
+  - Ensure at least one healthy worker node exists
+  - Verify the node has enough available CPU resources
+  - Check if specified container images are accessible
+  - Review API server logs for detailed error messages
+
+### Node Heartbeat Issues
+
+- **Symptom**: Nodes keep failing or showing as unhealthy
+- **Solutions**:
+  - Check network connectivity between node containers and API server
+  - Ensure Docker host networking is properly configured
+  - Verify no firewall rules are blocking communications
+  - Check the node container logs: `docker logs kube9-node-<node_name>`
+
+---
+
+## Project Structure
+
+- **app.py**: Main API server entry point
+- **models.py**: Database models for nodes, pods, containers, etc.
+- **config.py**: Configuration settings
+- **dashboard.py**: Streamlit dashboard for visual management
+- **routes/**: API route handlers
+  - **nodes.py**: Node management endpoints
+  - **pods.py**: Pod management endpoints
+- **services/**: Core services
+  - **docker_service.py**: Docker integration service
+  - **monitor.py**: Health monitoring and recovery service
+- **node_simulation/**: Node simulator code
+  - **node_simulator.py**: Code that runs inside node containers
+  - **Dockerfile**: Definition for node container image
 
 ---
 
@@ -406,12 +463,19 @@ flask db upgrade
 1. **Services and Load Balancing**: Expose pods to other pods or external users through stable IPs or DNS names.
 2. **Deployments for Scaling**: Add support for running multiple replicas of pods and scaling them up/down.
 3. **Rolling Updates**: Enable application updates without downtime by gradually replacing pods.
-4. **Dashboard UI**: Provide a visual interface to monitor and manage resources.
-5. **Monitoring and Logging**: Add comprehensive metrics collection and log aggregation.
-6. **Storage Classes**: Implement dynamic persistent volume provisioning with different storage options.
+4. **Enhanced Monitoring**: Add comprehensive metrics collection and visualization.
+5. **Storage Classes**: Implement dynamic persistent volume provisioning with different storage options.
+6. **Network Policies**: Add support for controlling network traffic between pods.
 
 ---
 
 ## License
 
 This project is for educational purposes and is not intended for production use.
+
+## Contributors
+
+- PES2UG22CS011
+- PES2UG22CS003
+- PES2UG22CS042
+- PES2UG22CS027

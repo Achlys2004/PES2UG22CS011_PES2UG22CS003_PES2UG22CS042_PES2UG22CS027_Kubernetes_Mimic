@@ -124,12 +124,9 @@ class Pod(data.Model):
     has_volumes = data.Column(data.Boolean, default=False)
     has_config = data.Column(data.Boolean, default=False)
 
-    docker_network_id = data.Column(data.String(64), nullable=True)
-
     containers = data.relationship(
         "Container", backref="pod", lazy=True, cascade="all, delete-orphan"
     )
-
 
 class Container(data.Model):
     __tablename__ = "containers"
@@ -146,8 +143,6 @@ class Container(data.Model):
     command = data.Column(data.String(200), nullable=True)
     args = data.Column(data.String(200), nullable=True)
 
-    docker_container_id = data.Column(data.String(64), nullable=True)
-    docker_status = data.Column(data.String(20), nullable=True)
     exit_code = data.Column(data.Integer, nullable=True)
 
 
@@ -161,14 +156,11 @@ class Volume(data.Model):
     path = data.Column(data.String(200), nullable=False)
     pod_id = data.Column(data.Integer, data.ForeignKey("pods.id"), nullable=False)
 
-    docker_volume_name = data.Column(data.String(64), nullable=True)
-
     pod = data.relationship(
         "Pod",
         backref=data.backref("volumes", lazy=True, cascade="all, delete-orphan"),
         lazy=True,
     )
-
 
 class ConfigItem(data.Model):
     __tablename__ = "config_items"
