@@ -76,7 +76,6 @@ When creating pods, the system will:
 3. Configure the database in `config.py`:
 
    ```python
-   # Example config.py
    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://username:password@localhost/cluster_db'
    SQLALCHEMY_TRACK_MODIFICATIONS = False
    ```
