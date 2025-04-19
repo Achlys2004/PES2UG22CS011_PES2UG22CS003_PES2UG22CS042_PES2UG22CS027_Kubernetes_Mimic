@@ -61,44 +61,6 @@ HEARTBEAT_INTERVAL = 60
 pod_processes = {}
 
 
-def send_heartbeat():
-    """Send heartbeat to API server"""
-    
-    initial_delay = 30  
-    time.sleep(initial_delay)
-
-    while True:
-        try:
-           
-            if NODE_ID != "0":
-                logger.info(
-                    f"Sending heartbeat to API server: {API_SERVER}/nodes/{NODE_ID}/heartbeat"
-                )
-                response = requests.post(
-                    f"{API_SERVER}/nodes/{NODE_ID}/heartbeat",
-                    json={
-                        "pod_ids": node_state["pod_ids"],
-                        "cpu_cores_avail": node_state["cpu_cores_avail"],
-                        "health_status": node_state["health_status"],
-                        "components": node_state["components"],
-                    },
-                    timeout=5,
-                )
-                if response.status_code == 200:
-                    logger.info("Heartbeat acknowledged")
-                else:
-                    logger.error(
-                        f"Heartbeat failed with status {response.status_code}: {response.text}"
-                    )
-            else:
-                logger.info("Skipping heartbeat - node ID not yet assigned")
-        except Exception as e:
-            logger.error(f"Error sending heartbeat: {str(e)}")
-
-       
-        time.sleep(HEARTBEAT_INTERVAL)
-
-
 @app.route("/", methods=["GET"])
 def home():
     return "Kube-9 Node Simulator is running!"
@@ -135,15 +97,12 @@ def add_pod():
     pod_id = data.get("pod_id")
     cpu_cores_req = data.get("cpu_cores_req", 1)
 
-    
     if not pod_id:
         return jsonify({"error": "Missing pod_id"}), 400
 
-    
     if node_state["cpu_cores_avail"] < cpu_cores_req:
         return jsonify({"error": "Insufficient CPU resources"}), 400
 
-    
     if pod_id not in node_state["pod_ids"]:
         node_state["pod_ids"].append(pod_id)
         node_state["cpu_cores_avail"] -= cpu_cores_req
@@ -164,18 +123,15 @@ def remove_pod(pod_id):
     """Remove a pod from this node"""
     str_pod_id = str(pod_id)
 
-    
     if str_pod_id not in pod_processes:
         return jsonify({"error": f"Pod {pod_id} not found on this node"}), 404
 
-    
     try:
         pod_spec = pod_processes[str_pod_id]["spec"]
         cpu_cores_req = pod_spec.get("cpu_cores_req", 1)
     except:
         cpu_cores_req = 1
 
-    
     for container in pod_processes[str_pod_id]["processes"]:
         try:
             if container.get("process"):
@@ -183,14 +139,13 @@ def remove_pod(pod_id):
                 try:
                     container["process"].wait(timeout=5)
                 except:
-                    
+
                     container["process"].kill()
 
             logger.info(f"Terminated process for container {container['name']}")
         except Exception as e:
             logger.error(f"Error terminating container {container['name']}: {str(e)}")
 
-    
     try:
         import shutil
 
@@ -199,10 +154,8 @@ def remove_pod(pod_id):
     except Exception as e:
         logger.error(f"Error removing pod directory: {str(e)}")
 
-    
     del pod_processes[str_pod_id]
 
-    
     if pod_id in node_state["pod_ids"]:
         node_state["pod_ids"].remove(pod_id)
 
@@ -242,16 +195,13 @@ def run_pod():
     if not pod_id or not pod_spec:
         return jsonify({"error": "Missing pod_id or pod_spec"}), 400
 
-    
     cpu_cores_req = pod_spec.get("cpu_cores_req", 1)
     if node_state["cpu_cores_avail"] < cpu_cores_req:
         return jsonify({"error": "Insufficient CPU resources"}), 400
 
-    
     pod_dir = f"/tmp/pod-{pod_id}"
     os.makedirs(pod_dir, exist_ok=True)
 
-    
     processes = []
     pod_status = {"containers": []}
 
@@ -261,23 +211,19 @@ def run_pod():
         image = container_spec.get("image", "busybox")
         command = container_spec.get("command", "sleep infinity")
 
-        
         env_vars = os.environ.copy()
         for key, value in pod_spec.get("environment", {}).items():
             env_vars[key] = value
 
-       
         env_vars["CONTAINER_NAME"] = container_name
         env_vars["POD_ID"] = str(pod_id)
         env_vars["POD_IP"] = pod_spec.get("ip_address", "10.244.0.1")
 
-        
         log_file = open(f"{pod_dir}/{container_name}.log", "w")
 
         try:
             logger.info(f"Starting container {container_name} with command: {command}")
 
-            
             if "nginx" in image:
                 process_thread = threading.Thread(
                     target=simulate_container,
@@ -299,7 +245,7 @@ def run_pod():
                 container_status = "running"
 
             else:
-                
+
                 proc = subprocess.Popen(
                     ["sleep", "infinity"],
                     stdout=log_file,
@@ -309,7 +255,6 @@ def run_pod():
                 process_thread = None
                 container_status = "running"
 
-            
             process_info = {
                 "process": proc if "proc" in locals() else None,
                 "thread": process_thread,
@@ -332,21 +277,22 @@ def run_pod():
             log_file.write(f"Error starting container: {str(e)}\n")
             log_file.close()
 
-            
             for p in processes:
                 try:
                     if p.get("process"):
                         p["process"].terminate()
                     if p.get("thread") and p["thread"].is_alive():
-                        pass  
+                        pass
                 except:
                     pass
 
-            return jsonify(
-                {"error": f"Failed to start container {container_name}: {str(e)}"}
-            ), 500
+            return (
+                jsonify(
+                    {"error": f"Failed to start container {container_name}: {str(e)}"}
+                ),
+                500,
+            )
 
-   
     pod_processes[str(pod_id)] = {
         "processes": processes,
         "spec": pod_spec,
@@ -355,7 +301,6 @@ def run_pod():
         "directory": pod_dir,
     }
 
-    
     if pod_id not in node_state["pod_ids"]:
         node_state["pod_ids"].append(pod_id)
 
@@ -376,18 +321,16 @@ def run_pod():
 def simulate_container(container_name, container_type, pod_dir, log_file, env_vars):
     """Simulate container process behavior"""
     try:
-        
+
         log_file.write(f"Starting {container_type} container simulation\n")
         log_file.flush()
 
-        
         while True:
-            
+
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             log_file.write(f"[{timestamp}] {container_type} simulation heartbeat\n")
             log_file.flush()
 
-            
             if container_type == "nginx":
                 log_file.write(
                     f"[{timestamp}] Simulated nginx: Handling HTTP request\n"
@@ -416,7 +359,7 @@ def get_pod_status(pod_id):
     all_running = True
 
     for container in pod["processes"]:
-        
+
         is_running = True
 
         if container.get("process"):
@@ -437,11 +380,55 @@ def get_pod_status(pod_id):
     overall_status = "running" if all_running else "failed"
 
     return (
-        jsonify(
-            {"pod_id": pod_id, "status": overall_status, "containers": containers}
-        ),
+        jsonify({"pod_id": pod_id, "status": overall_status, "containers": containers}),
         200,
     )
+
+
+@app.route("/heartbeat", methods=["POST"])
+def send_heartbeat():
+    """Send heartbeat to API server"""
+    try:
+        response = requests.post(
+            f"{API_SERVER}/nodes/{NODE_ID}/heartbeat",
+            json={
+                "pod_ids": node_state["pod_ids"],
+                "cpu_cores_avail": node_state["cpu_cores_avail"],
+                "health_status": node_state["health_status"],
+                "components": node_state["components"],
+            },
+            timeout=5,
+        )
+
+        data = response.json()
+
+        # Check if we need to stop heartbeating
+        if data.get("should_stop_heartbeat", False):
+            logger.warning(
+                f"API server requests node to stop sending heartbeats. Status: {data.get('node_status')}"
+            )
+
+            # If we should terminate, exit the process
+            if data.get("should_terminate", False):
+                logger.warning(
+                    "API server requests node to terminate. Shutting down..."
+                )
+                # Try to deregister
+                try:
+                    requests.post(f"{API_SERVER}/nodes/{NODE_ID}/deregister", timeout=3)
+                except:
+                    pass
+                # Exit the process
+                import os
+
+                os._exit(0)
+
+            return jsonify({"message": "Stopping heartbeats as requested"}), 200
+
+        # Continue normal processing...
+    except Exception as e:
+        logger.error(f"Error sending heartbeat: {str(e)}")
+        return jsonify({"error": "Failed to send heartbeat"}), 500
 
 
 def graceful_shutdown(sig, frame):
@@ -450,20 +437,35 @@ def graceful_shutdown(sig, frame):
     sys.exit(0)
 
 
+# Add a signal handler for graceful shutdown
+def signal_handler(sig, frame):
+    logger.info("Received shutdown signal")
+    if NODE_ID != "0":
+        try:
+            # Attempt to deregister from the cluster
+            requests.post(f"{API_SERVER}/nodes/{NODE_ID}/deregister", timeout=5)
+            logger.info(f"Node {NODE_NAME} deregistered from cluster")
+        except Exception as e:
+            logger.error(f"Failed to deregister node: {str(e)}")
 
-signal.signal(signal.SIGINT, graceful_shutdown)
-signal.signal(signal.SIGTERM, graceful_shutdown)
+    logger.info("Node simulator shutting down")
+    sys.exit(0)
 
 
-heartbeat_thread = threading.Thread(target=send_heartbeat, daemon=True)
+# Register the signal handler
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 
 if __name__ == "__main__":
-    
-    heartbeat_thread.start()
     logger.info(f"Node simulator starting: {NODE_NAME} (ID: {NODE_ID})")
     logger.info(f"CPU Cores: {CPU_CORES}, Type: {NODE_TYPE}")
     logger.info(f"API Server: {API_SERVER}")
     logger.info(f"Heartbeat interval: {HEARTBEAT_INTERVAL}s")
 
-    
+    # Start the heartbeat thread
+    heartbeat_thread = threading.Thread(target=send_heartbeat)
+    heartbeat_thread.daemon = True
+    heartbeat_thread.start()
+
     app.run(host="0.0.0.0", port=5000)

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask
 from sqlalchemy import text
 from config import SQLALCHEMY_DATABASE_URI, SQLALCHEMY_TRACK_MODIFICATIONS
 from models import data, Node
@@ -62,27 +62,30 @@ def cleanup_initializing_nodes():
     """Clean up nodes that are stuck in initializing state"""
     with app.app_context():
         try:
-            
+
             nodes = Node.query.filter_by(health_status="initializing").all()
 
             for node in nodes:
-                
+
                 if node.last_heartbeat is None:
                     app.logger.warning(
                         f"Removing node {node.name} stuck in initializing state"
                     )
-                    
+
                     if node.docker_container_id:
                         try:
                             from services.docker_service import DockerService
 
                             docker_service = DockerService()
-                            docker_service.stop_container(node.docker_container_id, is_node=True)
-                            docker_service.remove_container(node.docker_container_id, is_node=True, force=True)
+                            docker_service.stop_container(
+                                node.docker_container_id, is_node=True
+                            )
+                            docker_service.remove_container(
+                                node.docker_container_id, is_node=True, force=True
+                            )
                         except Exception as e:
                             app.logger.warning(f"Error cleaning up container: {str(e)}")
 
-                    
                     data.session.delete(node)
 
             data.session.commit()

@@ -17,26 +17,24 @@ def build_pod_spec(pod):
         "cpu_cores_req": pod.cpu_cores_req,
         "ip_address": pod.ip_address,
         "containers": [],
-        "environment": {}
+        "environment": {},
     }
-    
-    
+
     for container in pod.containers:
         container_spec = {
             "name": container.name,
-            "image": container.image, 
+            "image": container.image,
             "command": container.command,
             "args": container.args,
             "cpu_req": container.cpu_req,
-            "memory_req": container.memory_req
+            "memory_req": container.memory_req,
         }
         pod_spec["containers"].append(container_spec)
-    
-    
+
     for config in pod.config_items:
         if config.config_type == "env":
             pod_spec["environment"][config.key] = config.value
-    
+
     return pod_spec
 
 
@@ -51,7 +49,6 @@ def add_pod():
         volumes_data = req_data.get("volumes", [])
         config_data = req_data.get("config", [])
 
-        
         if not name:
             return jsonify({"error": "Name is missing or incorrect"}), 400
         elif not cpu_cores_req:
@@ -59,7 +56,6 @@ def add_pod():
         elif not containers_data:
             return jsonify({"error": "At least one container is required"}), 400
 
-        
         eligible_nodes = Node.query.filter(
             Node.cpu_cores_avail >= cpu_cores_req,
             Node.health_status == "healthy",
@@ -70,7 +66,7 @@ def add_pod():
 
         node = None
         if eligible_nodes:
-            
+
             node = min(eligible_nodes, key=lambda n: n.cpu_cores_avail)
 
         if not node:
@@ -83,15 +79,12 @@ def add_pod():
                 400,
             )
 
-        
         base_ip = "10.244.0.0"
         network = ipaddress.ip_network(f"{base_ip}/16")
         random_ip = str(random.choice(list(network.hosts())))
 
-        
         pod_type = "multi-container" if len(containers_data) > 1 else "single-container"
 
-        
         new_pod = Pod(
             name=name,
             cpu_cores_req=cpu_cores_req,
@@ -103,9 +96,8 @@ def add_pod():
             has_config=len(config_data) > 0,
         )
         data.session.add(new_pod)
-        data.session.flush()  
+        data.session.flush()
 
-        
         for container_data in containers_data:
             container = Container(
                 name=container_data.get(
@@ -121,7 +113,6 @@ def add_pod():
             )
             data.session.add(container)
 
-        
         for volume_data in volumes_data:
             volume = Volume(
                 name=volume_data.get(
@@ -134,7 +125,6 @@ def add_pod():
             )
             data.session.add(volume)
 
-        
         for config_item in config_data:
             config = ConfigItem(
                 name=config_item.get(
@@ -147,33 +137,27 @@ def add_pod():
             )
             data.session.add(config)
 
-        
         node.cpu_cores_avail -= cpu_cores_req
 
-        
         new_pod.health_status = "running"
         for container in new_pod.containers:
             container.status = "running"
 
-        
         try:
             pod_spec = build_pod_spec(new_pod)
-            
-            
+
             if node.node_ip:
                 response = requests.post(
                     f"http://{node.node_ip}:{node.node_port}/run_pod",
-                    json={
-                        "pod_id": new_pod.id,
-                        "pod_spec": pod_spec
-                    },
-                    timeout=10
+                    json={"pod_id": new_pod.id, "pod_spec": pod_spec},
+                    timeout=10,
                 )
-                
+
                 if response.status_code != 200:
-                    raise Exception(f"Node responded with status {response.status_code}: {response.text}")
-                
-                
+                    raise Exception(
+                        f"Node responded with status {response.status_code}: {response.text}"
+                    )
+
                 pod_status = response.json().get("pod_status", {})
                 for container_status in pod_status.get("containers", []):
                     for container in new_pod.containers:
@@ -181,25 +165,20 @@ def add_pod():
                             container.status = container_status["status"]
             else:
                 raise Exception("Node IP address not available")
-            
-            
+
             node.add_pod(new_pod.id)
-            
-            
+
             data.session.commit()
 
         except Exception as e:
-    
+
             current_app.logger.error(f"Error creating pod processes: {str(e)}")
-            
-            
+
             new_pod.health_status = "failed"
             data.session.commit()
-            
-            
+
             return jsonify({"error": f"Error creating pod processes: {str(e)}"}), 500
 
-        
         return (
             jsonify(
                 {
@@ -382,14 +361,12 @@ def delete_pod(pod_id):
         if not node:
             return jsonify({"error": "Associated node not found"}), 404
 
-        
         try:
             if node.node_ip:
                 response = requests.delete(
-                    f"http://{node.node_ip}:5000/pods/{pod_id}", 
-                    timeout=5
+                    f"http://{node.node_ip}:5000/pods/{pod_id}", timeout=5
                 )
-                
+
                 if response.status_code != 200:
                     current_app.logger.warning(
                         f"Node responded with status {response.status_code} when deleting pod: {response.text}"
@@ -399,13 +376,10 @@ def delete_pod(pod_id):
                 f"Failed to notify node about pod deletion: {str(e)}"
             )
 
-        
         node.cpu_cores_avail += pod.cpu_cores_req
 
-        
         node.remove_pod(pod_id)
 
-        
         data.session.delete(pod)
         data.session.commit()
 
@@ -422,46 +396,58 @@ def check_pod_health(pod_id):
     """Check the health of a pod by querying the hosting node"""
     pod = Pod.query.get_or_404(pod_id)
     node = Node.query.get(pod.node_id)
-    
+
     if not node:
         return jsonify({"error": "Associated node not found"}), 404
-    
-    
+
     try:
         if node.node_ip:
             response = requests.get(
-                f"http://{node.node_ip}:5000/pods/{pod_id}/status",
-                timeout=5
+                f"http://{node.node_ip}:5000/pods/{pod_id}/status", timeout=5
             )
-            
+
             if response.status_code == 200:
                 node_pod_status = response.json()
-                
-                
+
                 if pod.health_status != node_pod_status["status"]:
                     pod.health_status = node_pod_status["status"]
                     data.session.commit()
-                    
+
                 return jsonify(node_pod_status), 200
             else:
-                return jsonify({
+                return (
+                    jsonify(
+                        {
+                            "pod_id": pod_id,
+                            "pod_name": pod.name,
+                            "overall_status": pod.health_status,
+                            "error": f"Node returned status {response.status_code}",
+                        }
+                    ),
+                    200,
+                )
+        else:
+            return (
+                jsonify(
+                    {
+                        "pod_id": pod_id,
+                        "pod_name": pod.name,
+                        "overall_status": pod.health_status,
+                        "error": "Node IP address not available",
+                    }
+                ),
+                200,
+            )
+    except Exception as e:
+        current_app.logger.warning(f"Error checking pod status on node: {str(e)}")
+        return (
+            jsonify(
+                {
                     "pod_id": pod_id,
                     "pod_name": pod.name,
                     "overall_status": pod.health_status,
-                    "error": f"Node returned status {response.status_code}"
-                }), 200
-        else:
-            return jsonify({
-                "pod_id": pod_id,
-                "pod_name": pod.name,
-                "overall_status": pod.health_status,
-                "error": "Node IP address not available"
-            }), 200
-    except Exception as e:
-        current_app.logger.warning(f"Error checking pod status on node: {str(e)}")
-        return jsonify({
-            "pod_id": pod_id,
-            "pod_name": pod.name,
-            "overall_status": pod.health_status,
-            "error": f"Communication error: {str(e)}"
-        }), 200
+                    "error": f"Communication error: {str(e)}",
+                }
+            ),
+            200,
+        )

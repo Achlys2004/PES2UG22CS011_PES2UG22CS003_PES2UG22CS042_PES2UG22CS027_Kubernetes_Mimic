@@ -1,3 +1,4 @@
+import sys
 import streamlit as st
 import requests
 import pandas as pd
@@ -8,7 +9,7 @@ import datetime
 
 
 API_BASE = "http://localhost:5000"
-REFRESH_INTERVAL = 30  # seconds
+REFRESH_INTERVAL = 30
 VERSION = "1.0.0"
 
 
@@ -695,6 +696,11 @@ elif page == "Nodes":
 
     st.markdown('<div class="sub-header">Nodes</div>', unsafe_allow_html=True)
 
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if not st.session_state.nodes_data:
+            st.info("No nodes found. Add a node using the 'Create Resources' tab.")
+
     if not st.session_state.nodes_data:
         st.info("No nodes found. Add a node using the 'Create Resources' tab.")
     else:
@@ -784,17 +790,29 @@ elif page == "Nodes":
                 unsafe_allow_html=True,
             )
 
-            st.markdown(
-                f"""
+            node_info = f"""
             - **ID**: {node.get('id')}
             - **Name**: {node.get('name')}
             - **Type**: {node.get('node_type', 'Unknown')}
             - **Status**: {node.get('health_status', 'Unknown')}
             - **CPU Cores (Total)**: {node.get('cpu_cores_total', 0)}
             - **CPU Cores (Available)**: {node.get('cpu_cores_avail', 0)}
-            - **Hosted Pods**: {len(node.get('pod_ids', []))}
+            - **Hosted Pods**: {node.get('hosted_pods', 0)}
             """
-            )
+
+            recovery_attempts = node.get("recovery_attempts")
+            max_recovery_attempts = node.get("max_recovery_attempts")
+
+            if recovery_attempts is not None and max_recovery_attempts is not None:
+                node_info += f"- **Recovery Attempts**: {recovery_attempts}/{max_recovery_attempts}"
+
+                if (
+                    node.get("health_status") == "failed"
+                    and recovery_attempts >= max_recovery_attempts - 1
+                ):
+                    node_info += " ⚠️"
+
+            st.markdown(node_info)
 
             last_heartbeat = node.get("last_heartbeat", None)
             if last_heartbeat:
@@ -810,6 +828,45 @@ elif page == "Nodes":
                 - **Port**: {container.get('port', 'N/A')}
                 """
                 )
+
+            if node.get("health_status") == "permanently_failed":
+                st.markdown(
+                    """
+                    ⚠️ **This node has permanently failed**
+                    
+                    - The system will not attempt to recover this node
+                    - All pods have been or will be rescheduled to healthy nodes
+                    - Container resources for this node have been released
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown(
+                    '<div class="section-divider"></div>', unsafe_allow_html=True
+                )
+                st.markdown("### Container Cleanup Status")
+
+                container_id = node.get("docker_container_id")
+                if container_id:
+                    st.warning(
+                        f"⚠️ Container cleanup pending for node {node.get('name')}"
+                    )
+
+                    if st.button("Force Cleanup Container"):
+                        try:
+                            response = requests.post(
+                                f"{API_BASE}/nodes/{node.get('id')}/force_cleanup"
+                            )
+                            if response.status_code == 200:
+                                st.success("Container cleanup triggered")
+                                time.sleep(2)
+                                st.experimental_rerun()
+                            else:
+                                st.error(f"Failed to trigger cleanup: {response.text}")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                else:
+                    st.success("✅ Container resources have been cleaned up")
 
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -914,7 +971,7 @@ elif page == "Nodes":
 
                             time.sleep(2)  # 2-second delay
                             refresh_data()
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error(f"Failed to delete node: {response.text}")
                     except Exception as e:
@@ -1022,6 +1079,11 @@ elif page == "Pods":
         )
 
     st.markdown('<div class="sub-header">Pods</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        if not st.session_state.pods_data:
+            st.info("No pods found. Create a pod using the 'Create Resources' tab.")
 
     if not st.session_state.pods_data:
         st.info("No pods found. Create a pod using the 'Create Resources' tab.")
@@ -1165,7 +1227,7 @@ elif page == "Pods":
                             st.session_state.selected_pod = None
 
                             refresh_data()
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error(f"Failed to delete pod: {response.text}")
                     except Exception as e:
