@@ -15,36 +15,36 @@ class Node(data.Model):
     cpu_cores_total = data.Column(data.Integer, nullable=False)  # Total cores
     health_status = data.Column(data.String(20), default="healthy")
 
-    # Docker container representing the node
+   
     docker_container_id = data.Column(data.String(64), nullable=True)
     node_ip = data.Column(data.String(15), nullable=True)
     node_port = data.Column(data.Integer, default=5000)
 
-    # Node components status
+   
     kubelet_status = data.Column(data.String(20), default="running")
     container_runtime_status = data.Column(data.String(20), default="running")
     kube_proxy_status = data.Column(data.String(20), default="running")
     node_agent_status = data.Column(data.String(20), default="running")
 
-    # Master node specific components
+    
     api_server_status = data.Column(data.String(20), nullable=True)
     scheduler_status = data.Column(data.String(20), nullable=True)
     controller_status = data.Column(data.String(20), nullable=True)
     etcd_status = data.Column(data.String(20), nullable=True)
 
-    # Heartbeat tracking
+   
     last_heartbeat = data.Column(data.DateTime)
     heartbeat_interval = data.Column(data.Integer, default=60)  # 1 minute
     max_heartbeat_interval = data.Column(data.Integer, default=120)  # 2 minutes
 
-    # Recovery tracking
+    
     recovery_attempts = data.Column(data.Integer, default=0)
     max_recovery_attempts = data.Column(data.Integer, default=3)
 
-    # Store pod_ids as JSON string
+   
     _pod_ids = data.Column(data.Text, default="[]")
 
-    # Relationship with pods
+    
     pods = data.relationship(
         "Pod", backref="node", lazy=True, cascade="all, delete-orphan"
     )

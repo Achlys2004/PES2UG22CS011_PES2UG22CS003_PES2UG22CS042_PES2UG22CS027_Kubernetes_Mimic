@@ -28,10 +28,10 @@ class DockerService:
     ):
         """Create a Docker container to simulate a node"""
         try:
-            # Change this line to:
+            
             api_server = "http://host.docker.internal:5000"
             
-            # Try to remove any existing containers with the same name
+            
             container_name = f"kube9-node-{node_name}"
             try:
                 existing = self.client.containers.get(container_name)
@@ -40,12 +40,12 @@ class DockerService:
                 )
                 existing.remove(force=True)
             except:
-                pass  # Container doesn't exist, which is fine
+                pass  
 
-            # Generate a unique host port for this node (5000 + node_id)
+            
             host_port = 5000 + node_id
 
-            # Build node simulator image if it doesn't exist
+            
             try:
                 self.client.images.get("kube9-node-simulator")
                 self.logger.info("Using existing kube9-node-simulator image")
@@ -59,7 +59,7 @@ class DockerService:
                 )
                 self.logger.info("kube9-node-simulator image built successfully")
 
-            # Create the container with proper port mapping
+            
             container = self.client.containers.run(
                 image="kube9-node-simulator",
                 name=container_name,
@@ -72,25 +72,25 @@ class DockerService:
                     "API_SERVER": api_server,
                 },
                 network=self.node_network_name,
-                ports={"5000/tcp": host_port},  # Map container's 5000 to host_port
+                ports={"5000/tcp": host_port},  
                 restart_policy={"Name": "unless-stopped"},
-                cpu_quota=int(cpu_cores * 100000),  # Docker CPU quota in microseconds
-                mem_limit=f"{cpu_cores * 512}m",  # 512MB per CPU core
+                cpu_quota=int(cpu_cores * 100000),  
+                mem_limit=f"{cpu_cores * 512}m",  
                 extra_hosts={
                     "host.docker.internal": "host-gateway"
-                },  # Important for connectivity
+                },  
             )
 
-            # Wait a moment for the container to start
+            
             time.sleep(2)
 
-            # Use localhost and mapped port instead of container IP
-            return container.id, "localhost", host_port  # Return container ID, localhost, and the mapped host port
+            
+            return container.id, "localhost", host_port  
         except Exception as e:
             self.logger.error(f"Failed to create node container: {str(e)}")
             raise
 
-    # Original container methods
+   
     def create_container(
         self,
         name: str,
@@ -104,7 +104,7 @@ class DockerService:
     ) -> str:
         """Create a Docker container"""
         try:
-            # Pull the image if it doesn't exist
+            
             try:
                 self.client.images.get(image)
             except docker.errors.ImageNotFound:
@@ -118,7 +118,7 @@ class DockerService:
                 environment=environment,
                 volumes=volumes,
                 network=network,
-                cpu_quota=int(cpu_limit * 100000),  # Docker CPU quota in microseconds
+                cpu_quota=int(cpu_limit * 100000),  
                 mem_limit=memory_limit,
             )
 
@@ -149,7 +149,7 @@ class DockerService:
             
         try:
             container = self.client.containers.get(container_id)
-            # Use longer timeout for node containers
+            
             timeout = 10 if is_node else 5
             container.stop(timeout=timeout)
             
@@ -174,7 +174,7 @@ class DockerService:
             
         try:
             container = self.client.containers.get(container_id)
-            # Always force remove node containers
+            
             force_remove = True if is_node else force
             container.remove(force=force_remove)
             
@@ -194,7 +194,7 @@ class DockerService:
             ensure_exists: If True, won't remove existing network
         """
         try:
-            # Check if network already exists
+            
             existing_networks = self.client.networks.list(names=[name])
             
             if existing_networks:
@@ -202,17 +202,17 @@ class DockerService:
                     self.logger.info(f"Network {name} already exists")
                     return existing_networks[0].id
                     
-                # Remove existing network first
+                
                 self.logger.info(f"Network {name} already exists, removing it first")
                 for network in existing_networks:
                     try:
                         network.remove()
                     except Exception as e:
                         self.logger.warning(f"Error removing existing network {name}: {str(e)}")
-                # Brief pause to ensure network is removed
+                
                 time.sleep(1)
                     
-            # Create the network (with retry if needed)
+            
             max_attempts = 3
             for attempt in range(max_attempts):
                 try:
@@ -290,17 +290,17 @@ class DockerService:
             if not detailed:
                 return container.status
                 
-            # Get detailed info for node containers
+            
             container.reload()
             
-            # Get network information
+            
             network_settings = container.attrs["NetworkSettings"]["Networks"]
             if self.node_network_name in network_settings:
                 ip = network_settings[self.node_network_name]["IPAddress"]
             else:
                 ip = next(iter(network_settings.values()))["IPAddress"]
 
-            # Get port mapping
+            
             port_bindings = container.attrs["NetworkSettings"]["Ports"].get("5000/tcp", [])
             port = int(port_bindings[0]["HostPort"]) if port_bindings else 5000
 

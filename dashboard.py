@@ -12,12 +12,12 @@ import io
 import base64
 import re
 
-# Configuration
+
 API_BASE = "http://localhost:5000"
 REFRESH_INTERVAL = 30  # seconds
 VERSION = "1.0.0"
 
-# Custom color scheme
+
 COLORS = {
     "primary": "#0066cc",
     "secondary": "#6c757d",
@@ -41,7 +41,7 @@ COLORS = {
     },
 }
 
-# Page configuration
+
 st.set_page_config(
     page_title="Kube-9 Dashboard",
     page_icon="🚀",
@@ -49,7 +49,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS to improve the UI
+
 st.markdown(
     """
 <style>
@@ -173,9 +173,9 @@ st.markdown(
 )
 
 
-# Generate a logo-like base64 string for Kube-9
+
 def get_logo_base64():
-    # This would be better with a real logo, but we'll generate a simple one
+    
     from PIL import Image, ImageDraw, ImageFont
     import io
     import base64
@@ -183,11 +183,11 @@ def get_logo_base64():
     img = Image.new("RGBA", (200, 100), color=(255, 255, 255, 0))
     d = ImageDraw.Draw(img)
 
-    # Draw a simple kubernetes-like logo
+   
     d.ellipse((10, 10, 90, 90), fill=(50, 109, 230))
     d.polygon([(50, 20), (80, 50), (50, 80), (20, 50)], fill=(255, 255, 255))
 
-    # Add the text "Kube-9"
+    
     d.text((100, 35), "Kube-9", fill=(50, 109, 230), font=None)
 
     buffered = io.BytesIO()
@@ -195,7 +195,7 @@ def get_logo_base64():
     return base64.b64encode(buffered.getvalue()).decode()
 
 
-# Initialize session state for the application
+
 if "auto_refresh" not in st.session_state:
     st.session_state.auto_refresh = False
     st.session_state.refresh_interval = REFRESH_INTERVAL
@@ -211,7 +211,7 @@ if "auto_refresh" not in st.session_state:
     st.session_state.pod_filter = "all"
 
 
-# Helper functions
+
 def format_status_badge(status):
     """Format status with colored badge"""
     color = COLORS["status"].get(status.lower(), COLORS["secondary"])
@@ -254,7 +254,7 @@ def get_api_data(endpoint, default=None):
 def refresh_data():
     """Refresh all data from the API"""
     with st.spinner("Refreshing data..."):
-        # Test API connection
+        
         try:
             response = requests.get(f"{API_BASE}/", timeout=2)
             st.session_state.api_connected = response.status_code == 200
@@ -262,15 +262,15 @@ def refresh_data():
             st.session_state.api_connected = False
 
         if st.session_state.api_connected:
-            # Get nodes data
+            
             st.session_state.nodes_data = get_api_data("nodes", [])
-            # Get pods data
+            
             st.session_state.pods_data = get_api_data("pods", [])
-            # Update last refresh time
+            
             st.session_state.last_refresh = datetime.datetime.now()
 
 
-# Auto-refresh mechanism
+
 def check_auto_refresh():
     if st.session_state.auto_refresh and st.session_state.last_refresh:
         time_since_refresh = (
@@ -280,20 +280,20 @@ def check_auto_refresh():
             refresh_data()
 
 
-# Sidebar with navigation menu
+
 with st.sidebar:
     st.markdown(
         '<div class="sidebar-header">KUBE-9 DASHBOARD</div>', unsafe_allow_html=True
     )
 
-    # Navigation
+    
     page = st.radio(
         "Navigation",
         ["Overview", "Nodes", "Pods", "Create Resources", "Settings", "Help"],
         key="page_selection",
     )
 
-    # Auto-refresh toggle
+    
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="sidebar-header">DASHBOARD SETTINGS</div>', unsafe_allow_html=True
@@ -316,35 +316,35 @@ with st.sidebar:
         )
         st.session_state.refresh_interval = refresh_interval
 
-    # Manual refresh button
+    
     if st.button("Refresh Now"):
         refresh_data()
 
-    # Show connection status
+    
     if st.session_state.api_connected:
         st.success("✅ API Connected")
     else:
         st.error("❌ API Disconnected")
 
-    # Show last refresh time
+   
     if st.session_state.last_refresh:
         st.info(f"Last refresh: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
 
-    # Version information
+    
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     st.markdown(
         f"<div class='info-text'>Kube-9 Dashboard v{VERSION}</div>",
         unsafe_allow_html=True,
     )
 
-# Check auto-refresh
+
 check_auto_refresh()
 
-# If this is the first load, refresh data
+
 if st.session_state.nodes_data is None:
     refresh_data()
 
-# Main content header
+
 if page != "Help":
     st.markdown(
         f"""
@@ -355,9 +355,9 @@ if page != "Help":
         unsafe_allow_html=True,
     )
 
-# Overview Page
+
 if page == "Overview":
-    # Top row with key metrics
+    
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -424,7 +424,7 @@ if page == "Overview":
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Second row: CPU utilization charts
+    
     st.markdown(
         '<div class="sub-header">Cluster Resource Utilization</div>',
         unsafe_allow_html=True,
@@ -541,7 +541,7 @@ if page == "Overview":
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Third row: Recent activities
+    
     st.markdown(
         '<div class="sub-header">Cluster Overview</div>', unsafe_allow_html=True
     )
@@ -556,13 +556,13 @@ if page == "Overview":
         )
 
         if st.session_state.nodes_data:
-            # Count nodes by type
+           
             node_types = {}
             for node in st.session_state.nodes_data:
                 node_type = node.get("node_type", "unknown")
                 node_types[node_type] = node_types.get(node_type, 0) + 1
 
-            # Create a horizontal bar chart
+            
             type_df = pd.DataFrame(
                 [{"type": k, "count": v} for k, v in node_types.items()]
             )
@@ -600,13 +600,13 @@ if page == "Overview":
         )
 
         if st.session_state.pods_data:
-            # Count pods by type
+            
             pod_types = {}
             for pod in st.session_state.pods_data:
                 pod_type = pod.get("type", "unknown")
                 pod_types[pod_type] = pod_types.get(pod_type, 0) + 1
 
-            # Create a horizontal bar chart
+            
             type_df = pd.DataFrame(
                 [{"type": k, "count": v} for k, v in pod_types.items()]
             )
@@ -637,7 +637,7 @@ if page == "Overview":
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Fourth row: Resource allocation
+    
     st.markdown(
         '<div class="sub-header">Pod Distribution Across Nodes</div>',
         unsafe_allow_html=True,
@@ -646,10 +646,10 @@ if page == "Overview":
     st.markdown('<div class="chart-container">', unsafe_allow_html=True)
 
     if st.session_state.nodes_data and st.session_state.pods_data:
-        # Create node-pod mapping
+        
         node_map = {node["id"]: node["name"] for node in st.session_state.nodes_data}
 
-        # Count pods per node
+        
         pods_per_node = {}
         for pod in st.session_state.pods_data:
             if "node" in pod and pod["node"]:
@@ -659,7 +659,7 @@ if page == "Overview":
                     pods_per_node[node_name] = pods_per_node.get(node_name, 0) + 1
 
         if pods_per_node:
-            # Create DataFrame for visualization
+            
             df = pd.DataFrame(
                 [{"node": k, "pods": v} for k, v in pods_per_node.items()]
             )
@@ -688,9 +688,9 @@ if page == "Overview":
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Nodes Page
+
 elif page == "Nodes":
-    # Node filters
+    
     st.markdown(
         '<div class="resource-title">Nodes Filter</div>', unsafe_allow_html=True
     )
@@ -718,13 +718,13 @@ elif page == "Nodes":
             key="node_type_filter",
         )
 
-    # Node list
+    
     st.markdown('<div class="sub-header">Nodes</div>', unsafe_allow_html=True)
 
     if not st.session_state.nodes_data:
         st.info("No nodes found. Add a node using the 'Create Resources' tab.")
     else:
-        # Apply filters
+        
         filtered_nodes = st.session_state.nodes_data
         if node_filter != "all":
             filtered_nodes = [
@@ -743,7 +743,7 @@ elif page == "Nodes":
         if not filtered_nodes:
             st.info("No nodes match the selected filters.")
         else:
-            # Display nodes in a table
+            
             node_data = []
             for node in filtered_nodes:
                 node_data.append(
@@ -761,32 +761,32 @@ elif page == "Nodes":
                     }
                 )
 
-            # Convert to DataFrame
+            
             df = pd.DataFrame(node_data)
 
-            # Create a clickable dataframe
+            
             st.write("Click on a row to view node details:")
 
-            # Use AgGrid for better table interaction
+            
             selected_indices = []
             if not df.empty:
-                # Display table with HTML
+                
                 def make_clickable(val):
                     return f'<div style="text-align: center;">{val}</div>'
 
-                # Format the dataframe for display
+               
                 formatted_df = df.copy()
-                # Apply the status badge
+                
                 formatted_df["Status"] = formatted_df["Status"].apply(lambda x: x)
                 formatted_df = formatted_df.drop(columns=["Actions"])
 
-                # Display the table
+                
                 st.markdown(
                     formatted_df.to_html(escape=False, index=False),
                     unsafe_allow_html=True,
                 )
 
-                # Add selection via standard Streamlit
+               
                 selected_node_id = st.selectbox(
                     "Select a node to view details:",
                     [f"{node['id']} - {node['name']}" for node in filtered_nodes],
@@ -799,7 +799,7 @@ elif page == "Nodes":
                         (n for n in filtered_nodes if n.get("id") == node_id), None
                     )
 
-    # Display selected node details
+    
     if st.session_state.selected_node:
         node = st.session_state.selected_node
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -808,7 +808,7 @@ elif page == "Nodes":
             unsafe_allow_html=True,
         )
 
-        # Node details
+        
         col1, col2 = st.columns(2)
 
         with col1:
@@ -818,7 +818,7 @@ elif page == "Nodes":
                 unsafe_allow_html=True,
             )
 
-            # Basic info
+            
             st.markdown(
                 f"""
             - **ID**: {node.get('id')}
@@ -831,12 +831,12 @@ elif page == "Nodes":
             """
             )
 
-            # Last heartbeat
+            
             last_heartbeat = node.get("last_heartbeat", None)
             if last_heartbeat:
                 st.markdown(f"- **Last Heartbeat**: {format_datetime(last_heartbeat)}")
 
-            # Container info
+            
             container = node.get("container", {})
             if container:
                 st.markdown(
@@ -857,10 +857,10 @@ elif page == "Nodes":
                 unsafe_allow_html=True,
             )
 
-            # Component status
+            
             components = node.get("components", {})
 
-            # Common components for all nodes
+            
             common_components = {
                 "kubelet": components.get("kubelet", "Unknown"),
                 "container_runtime": components.get("container_runtime", "Unknown"),
@@ -868,14 +868,14 @@ elif page == "Nodes":
                 "node_agent": components.get("node_agent", "Unknown"),
             }
 
-            # Display common components
+            
             for name, status in common_components.items():
                 st.markdown(
                     f"- **{name.replace('_', ' ').title()}**: {format_component_badge(status)}",
                     unsafe_allow_html=True,
                 )
 
-            # Master-specific components
+            
             if node.get("node_type") == "master":
                 master_components = {
                     "api_server": components.get("api_server", "Unknown"),
@@ -897,7 +897,7 @@ elif page == "Nodes":
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # Node actions
+        
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown(
             '<div class="resource-title">Node Actions</div>', unsafe_allow_html=True
@@ -907,7 +907,7 @@ elif page == "Nodes":
 
         with col1:
             if st.button("Refresh Node"):
-                # Get fresh node data
+                
                 try:
                     response = requests.get(f"{API_BASE}/nodes/{node.get('id')}")
                     if response.status_code == 200:
@@ -921,7 +921,7 @@ elif page == "Nodes":
 
         with col2:
             if st.button("Simulate Failure"):
-                # Simulate node failure
+                
                 try:
                     response = requests.post(
                         f"{API_BASE}/nodes/{node.get('id')}/simulate/failure"
@@ -930,7 +930,7 @@ elif page == "Nodes":
                         st.warning(
                             "Node failure simulated. The system will attempt recovery."
                         )
-                        # Update node data
+                        
                         response = requests.get(f"{API_BASE}/nodes/{node.get('id')}")
                         if response.status_code == 200:
                             st.session_state.selected_node = response.json()
@@ -941,19 +941,19 @@ elif page == "Nodes":
 
         with col3:
             if st.button("Delete Node"):
-                # Check if node has pods
+                
                 if node.get("pod_ids", []):
                     st.error(
                         "Cannot delete node with pods. Delete or reschedule pods first."
                     )
                 else:
-                    # Delete node
+                    
                     try:
                         response = requests.delete(f"{API_BASE}/nodes/{node.get('id')}")
                         if response.status_code == 200:
                             st.success("Node deleted successfully!")
                             st.session_state.selected_node = None
-                            # Refresh nodes data
+                           
                             refresh_data()
                             st.experimental_rerun()
                         else:
@@ -963,7 +963,7 @@ elif page == "Nodes":
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Node CPU utilization
+        
         st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         st.markdown(
             '<div class="resource-title">CPU Utilization</div>', unsafe_allow_html=True
@@ -973,7 +973,7 @@ elif page == "Nodes":
         cpu_total = node.get("cpu_cores_total", 0)
 
         if cpu_total > 0:
-            # Create gauge chart for CPU usage
+            
             fig = go.Figure(
                 go.Indicator(
                     mode="gauge+number",
@@ -1008,7 +1008,7 @@ elif page == "Nodes":
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Pods on this node
+        
         if st.session_state.pods_data:
             node_pods = [
                 pod
@@ -1022,7 +1022,7 @@ elif page == "Nodes":
                     unsafe_allow_html=True,
                 )
 
-                # Create table of pods
+                
                 pod_data = []
                 for pod in node_pods:
                     pod_data.append(
@@ -1038,17 +1038,17 @@ elif page == "Nodes":
                         }
                     )
 
-                # Convert to DataFrame
+                
                 pod_df = pd.DataFrame(pod_data)
 
-                # Display the table
+                
                 st.markdown(
                     pod_df.to_html(escape=False, index=False), unsafe_allow_html=True
                 )
 
-# Pods Page
+
 elif page == "Pods":
-    # Pod filters
+    
     st.markdown('<div class="resource-title">Pods Filter</div>', unsafe_allow_html=True)
     col1, col2 = st.columns([1, 3])
 
@@ -1067,13 +1067,13 @@ elif page == "Pods":
             key="pod_type_filter",
         )
 
-    # Pod list
+    
     st.markdown('<div class="sub-header">Pods</div>', unsafe_allow_html=True)
 
     if not st.session_state.pods_data:
         st.info("No pods found. Create a pod using the 'Create Resources' tab.")
     else:
-        # Apply filters
+        
         filtered_pods = st.session_state.pods_data
         if pod_filter != "all":
             filtered_pods = [
@@ -1090,7 +1090,7 @@ elif page == "Pods":
         if not filtered_pods:
             st.info("No pods match the selected filters.")
         else:
-            # Display pods in a table
+            
             pod_data = []
             for pod in filtered_pods:
                 node_name = pod.get("node", {}).get("name", "Unknown")
@@ -1109,14 +1109,14 @@ elif page == "Pods":
                     }
                 )
 
-            # Convert to DataFrame
+            
             df = pd.DataFrame(pod_data)
 
-            # Display table with HTML
+            
             st.write("Click on a row to view pod details:")
             st.markdown(df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-            # Add selection via standard Streamlit
+            
             selected_pod_id = st.selectbox(
                 "Select a pod to view details:",
                 [f"{pod['id']} - {pod['name']}" for pod in filtered_pods],
@@ -1129,7 +1129,7 @@ elif page == "Pods":
                     (p for p in filtered_pods if p.get("id") == pod_id), None
                 )
 
-    # Display selected pod details
+    
     if st.session_state.selected_pod:
         pod = st.session_state.selected_pod
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -1138,7 +1138,7 @@ elif page == "Pods":
             unsafe_allow_html=True,
         )
 
-        # Pod details
+        
         col1, col2 = st.columns(2)
 
         with col1:
@@ -1148,7 +1148,7 @@ elif page == "Pods":
                 unsafe_allow_html=True,
             )
 
-            # Basic info
+            
             node_info = pod.get("node", {})
             node_name = node_info.get("name", "Unknown") if node_info else "Unknown"
 
@@ -1165,7 +1165,7 @@ elif page == "Pods":
             """
             )
 
-            # Additional features
+            
             has_volumes = pod.get("has_volumes", False)
             has_config = pod.get("has_config", False)
 
@@ -1178,7 +1178,7 @@ elif page == "Pods":
             if features:
                 st.markdown("**Features**: " + ", ".join(features))
 
-            # Network ID
+            
             network_id = pod.get("docker_network_id", None)
             if network_id:
                 st.markdown(
@@ -1197,7 +1197,7 @@ elif page == "Pods":
 
             with col1:
                 if st.button("Check Health"):
-                    # Check pod health
+                    
                     try:
                         response = requests.get(
                             f"{API_BASE}/pods/{pod.get('id')}/health"
@@ -1212,13 +1212,13 @@ elif page == "Pods":
 
             with col2:
                 if st.button("Delete Pod"):
-                    # Delete pod
+                    
                     try:
                         response = requests.delete(f"{API_BASE}/pods/{pod.get('id')}")
                         if response.status_code == 200:
                             st.success("Pod deleted successfully!")
                             st.session_state.selected_pod = None
-                            # Refresh pods data
+                            
                             refresh_data()
                             st.experimental_rerun()
                         else:
@@ -1228,7 +1228,7 @@ elif page == "Pods":
 
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # Container details
+        
         st.markdown('<div class="sub-header">Containers</div>', unsafe_allow_html=True)
 
         containers = pod.get("containers", [])
@@ -1248,7 +1248,7 @@ elif page == "Pods":
                     """
                     )
 
-                    # Docker details if available
+                    
                     docker_id = container.get("docker_id", None)
                     docker_status = container.get("docker_status", None)
 
@@ -1263,7 +1263,7 @@ elif page == "Pods":
         else:
             st.info("No container information available")
 
-        # Volume details
+        
         volumes = pod.get("volumes", [])
         if volumes:
             st.markdown('<div class="sub-header">Volumes</div>', unsafe_allow_html=True)
@@ -1281,7 +1281,7 @@ elif page == "Pods":
                     """
                     )
 
-        # Config details
+        
         configs = pod.get("config", [])
         if configs:
             st.markdown(
@@ -1300,11 +1300,11 @@ elif page == "Pods":
                     """
                     )
 
-# Create Resources Page
+
 elif page == "Create Resources":
     tab1, tab2 = st.tabs(["Create Node", "Create Pod"])
 
-    # Create Node Tab
+    
     with tab1:
         st.markdown(
             '<div class="sub-header">Create New Node</div>', unsafe_allow_html=True
@@ -1331,7 +1331,7 @@ elif page == "Create Resources":
                 if not node_name:
                     st.error("Node name is required.")
                 else:
-                    # Create node
+                    
                     try:
                         node_data = {
                             "name": node_name,
@@ -1343,14 +1343,14 @@ elif page == "Create Resources":
 
                         if response.status_code == 201:
                             st.success(f"Node '{node_name}' created successfully!")
-                            # Refresh node data
+                            
                             refresh_data()
                         else:
                             st.error(f"Failed to create node: {response.text}")
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
 
-    # Create Pod Tab
+    
     with tab2:
         st.markdown(
             '<div class="sub-header">Create New Pod</div>', unsafe_allow_html=True
@@ -1367,16 +1367,16 @@ elif page == "Create Resources":
                 key="new_pod_cpu",
             )
 
-            # Container configuration with dynamic number of containers
+            
             st.markdown("### Container Configuration")
 
-            # Let user select number of containers (at least 1)
+            
             num_containers = st.number_input("Number of containers", min_value=1, max_value=10, value=1, key="num_containers")
 
-            # Create a list to store all container data
+            
             containers_data = []
 
-            # Generate container expanders dynamically
+            
             for i in range(1, num_containers + 1):
                 with st.expander(f"Container {i}", expanded=(i==1)):
                     container_name = st.text_input(f"Container {i} Name", key=f"container{i}_name", value=f"container-{i}")
@@ -1409,7 +1409,7 @@ elif page == "Create Resources":
                             key=f"container{i}_memory"
                         )
                     
-                    # Optional container command and args
+                    
                     show_advanced = st.checkbox(f"Show advanced options", key=f"container{i}_advanced")
                     
                     container_command = None
@@ -1428,7 +1428,7 @@ elif page == "Create Resources":
                             help="Command arguments"
                         )
                     
-                    # Add this container to the list
+                    
                     container_data = {
                         "name": container_name,
                         "image": container_image,
@@ -1444,15 +1444,15 @@ elif page == "Create Resources":
                         
                     containers_data.append(container_data)
 
-            # Advanced options: Volumes and Configuration
+            
             add_volumes = st.checkbox("Add volumes", key="add_volumes")
             volumes_data = []
 
             if add_volumes:
-                # Let user select number of volumes
+                
                 num_volumes = st.number_input("Number of volumes", min_value=1, max_value=5, value=1, key="num_volumes")
                 
-                # Generate volume expanders dynamically
+                
                 for i in range(1, num_volumes + 1):
                     with st.expander(f"Volume {i}", expanded=(i==1)):
                         volume_name = st.text_input(f"Volume {i} Name", key=f"volume{i}_name", value=f"volume-{i}")
@@ -1478,7 +1478,7 @@ elif page == "Create Resources":
                             help="Path where volume will be mounted in containers"
                         )
                         
-                        # Add this volume to the list
+                        
                         volumes_data.append({
                             "name": volume_name,
                             "type": volume_type,
@@ -1486,7 +1486,7 @@ elif page == "Create Resources":
                             "path": volume_path
                         })
 
-            # Keep the configuration section as is
+            
             add_config = st.checkbox("Add configuration", key="add_config")
             config_data = None
             if add_config:
@@ -1508,28 +1508,28 @@ elif page == "Create Resources":
             submit_button = st.form_submit_button("Create Pod")
 
             if submit_button:
-                # Form validation
+                
                 if not pod_name:
                     st.error("Pod name is required")
                 elif not containers_data:
                     st.error("At least one container is required")
                 else:
-                    # Prepare pod data
+                    
                     pod_data = {
                         "name": pod_name,
                         "cpu_cores_req": cpu_cores_req,
                         "containers": containers_data
                     }
                     
-                    # Add volumes if provided
+                    
                     if volumes_data:
                         pod_data["volumes"] = volumes_data
                     
-                    # Add config if provided
+                    
                     if config_data:
                         pod_data["config"] = [config_data]
                     
-                    # Create the pod
+                    
                     try:
                         with st.spinner("Creating pod..."):
                             response = requests.post(f"{API_BASE}/pods/", json=pod_data)
@@ -1537,20 +1537,20 @@ elif page == "Create Resources":
                             if response.status_code == 200:
                                 st.success(f"Pod '{pod_name}' created successfully!")
                                 st.json(response.json())
-                                # Refresh data
+                                
                                 refresh_data()
                             else:
                                 st.error(f"Failed to create pod: {response.text}")
                     except Exception as e:
                         st.error(f"Error: {str(e)}")
 
-# Settings Page
+
 elif page == "Settings":
     st.markdown(
         '<div class="sub-header">Dashboard Settings</div>', unsafe_allow_html=True
     )
 
-    # API settings
+    
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(
         '<div class="resource-title">API Configuration</div>', unsafe_allow_html=True
@@ -1573,7 +1573,7 @@ elif page == "Settings":
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Display settings
+   
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(
         '<div class="resource-title">Display Settings</div>', unsafe_allow_html=True
@@ -1593,7 +1593,7 @@ elif page == "Settings":
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Database connection
+    
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown(
         '<div class="resource-title">Database Connection</div>', unsafe_allow_html=True
@@ -1611,7 +1611,7 @@ elif page == "Settings":
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# Help Page
+
 elif page == "Help":
     st.markdown(
         '<div class="main-header">Kube-9 Dashboard Help</div>', unsafe_allow_html=True
@@ -1731,7 +1731,7 @@ elif page == "Help":
     """
     )
 
-# Footer
+
 st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align: center; color: #6c757d; font-size: 0.8rem;">Kube-9: A Kubernetes-like Container Orchestration System</div>',

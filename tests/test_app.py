@@ -5,7 +5,7 @@ from app import app
 def client():
     app.config["TESTING"] = True
     with app.test_client() as client:
-        yield client  # Provide test client
+        yield client  
 
 def test_home_route(client):
     response = client.get("/")

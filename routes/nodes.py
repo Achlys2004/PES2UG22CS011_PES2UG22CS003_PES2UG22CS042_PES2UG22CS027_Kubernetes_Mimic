@@ -10,8 +10,8 @@ import logging
 nodes_bp = Blueprint("nodes", __name__)
 docker_service = DockerService()
 
-# Heartbeat settings
-HEARTBEAT_INTERVAL = 60  # seconds
+
+HEARTBEAT_INTERVAL = 60  
 
 
 @nodes_bp.route("/", methods=["POST"])
@@ -20,7 +20,7 @@ def create_node():
     try:
         payload = request.get_json()
 
-        # Validate input
+        
         if not payload.get("name"):
             return jsonify({"error": "Node name is required"}), 400
         if not payload.get("cpu_cores_avail") or payload["cpu_cores_avail"] <= 0:
@@ -30,7 +30,7 @@ def create_node():
         if node_type not in ["worker", "master"]:
             return jsonify({"error": "Node type must be 'worker' or 'master'"}), 400
 
-        # Check if node with same name already exists
+
         existing = Node.query.filter_by(name=payload["name"]).first()
         if existing:
             return (
@@ -40,35 +40,34 @@ def create_node():
                 400,
             )
 
-        # Mark as initializing initially
+        
         node = Node(
             name=payload["name"],
             node_type=node_type,
             cpu_cores_avail=payload["cpu_cores_avail"],
             cpu_cores_total=payload["cpu_cores_avail"],
-            health_status="initializing",  # Start as initializing
+            health_status="initializing",  
         )
 
         data.session.add(node)
-        data.session.flush()  # Get the node ID without committing
+        data.session.flush()  
 
-        # Create and start container - pass the known node ID
+        
         container_id, node_ip, node_port = docker_service.create_node_container(
             node.id, node.name, node.cpu_cores_total, node.node_type
         )
 
-        # Update node with container details
+        
         node.docker_container_id = container_id
-        node.node_ip = node_ip  # This will be "localhost"
+        node.node_ip = node_ip  
         node.node_port = (
-            node_port  # This will be the mapped host port (5004, 5005, etc.)
+            node_port  
         )
 
-        # Commit to database
+      
         data.session.commit()
 
-        # Return response immediately, don't wait for ID update
-        # ID updates will happen asynchronously and status will be tracked
+   
         return (
             jsonify(
                 {
@@ -114,7 +113,7 @@ def list_all_nodes():
             },
         }
 
-        # Master node components
+        
         if node.node_type == "master":
             node_data["components"].update(
                 {
@@ -168,7 +167,7 @@ def get_nodes_health():
 @nodes_bp.route("/<int:node_id>/heartbeat", methods=["POST"])
 def update_heartbeat(node_id):
     try:
-        # Get the node by ID
+        
         node = Node.query.get(node_id)
         if not node:
             current_app.logger.warning(
@@ -176,22 +175,22 @@ def update_heartbeat(node_id):
             )
             return jsonify({"error": f"Node with ID {node_id} not found"}), 404
 
-        # Update node based on heartbeat data
+       
         payload = request.get_json() or {}
 
-        # Update heartbeat timestamp
+       
         node.last_heartbeat = datetime.now(timezone.utc)
 
-        # IMPORTANT: Get the incoming status but DON'T apply it yet
+       
         health_status = payload.get("health_status", "healthy")
 
-        # Check if node is permanently failed BEFORE updating status
+       
         if node.health_status == "permanently_failed":
             current_app.logger.info(
                 f"[HEARTBEAT] Ignoring heartbeat status update for permanently failed node {node.name} (ID: {node.id})"
             )
 
-            # Ensure rescheduler is triggered if there are still pods
+           
             if node.pod_ids:
                 monitor = current_app.config.get("DOCKER_MONITOR")
                 if monitor:
@@ -200,10 +199,10 @@ def update_heartbeat(node_id):
                         f"[HEARTBEAT] Triggering pod rescheduler for permanently failed node {node.name} with {len(node.pod_ids)} pods"
                     )
         else:
-            # Only update health status if node is NOT permanently failed
+           
             node.health_status = health_status
 
-            # If node reports itself as permanently failed, trigger rescheduling
+       
             if health_status == "permanently_failed":
                 current_app.logger.info(
                     f"[HEARTBEAT] Node {node.name} (ID: {node.id}) reported itself as permanently_failed, triggering pod rescheduler"
@@ -212,7 +211,7 @@ def update_heartbeat(node_id):
                 if monitor:
                     monitor.need_rescheduling = True
 
-        # Continue with other updates...
+        
         components = payload.get("components", {})
         if "kubelet" in components:
             node.kubelet_status = components["kubelet"]
@@ -223,11 +222,11 @@ def update_heartbeat(node_id):
         if "node_agent" in components:
             node.node_agent_status = components["node_agent"]
 
-        # Update CPU availability if provided
+        
         if "cpu_cores_avail" in payload:
             node.cpu_cores_avail = payload["cpu_cores_avail"]
 
-        # Update pod IDs if provided (but not for permanently failed nodes)
+        
         if "pod_ids" in payload and node.health_status != "permanently_failed":
             node.pod_ids = payload["pod_ids"]
 
@@ -251,7 +250,7 @@ def get_node(node_id):
     """Get node details"""
     node = Node.query.get_or_404(node_id)
 
-    # Get container status
+    
     container_info = docker_service.get_container_info(node.docker_container_id, detailed=True)
 
     return (
@@ -291,7 +290,7 @@ def delete_node(node_id):
     try:
         node = Node.query.get_or_404(node_id)
 
-        # Check if node has pods
+       
         pod_count = len(node.pod_ids)
         if pod_count > 0:
             return (
@@ -303,7 +302,7 @@ def delete_node(node_id):
                 400,
             )
 
-        # Remove node container
+        
         if node.docker_container_id:
             try:
                 docker_service.stop_node_container(node.docker_container_id)
@@ -311,7 +310,7 @@ def delete_node(node_id):
             except Exception as e:
                 current_app.logger.warning(f"Failed to remove container: {str(e)}")
 
-        # Delete node from database
+       
         data.session.delete(node)
         data.session.commit()
 
@@ -334,7 +333,7 @@ def simulate_node_failure(node_id):
     try:
         node = Node.query.get_or_404(node_id)
 
-        # Send failure simulation request to node container
+        
         if node.docker_container_id and node.node_ip:
             try:
                 requests.post(f"http://{node.node_ip}:5000/simulate/failure", timeout=5)
@@ -343,7 +342,7 @@ def simulate_node_failure(node_id):
                     f"Failed to send failure simulation to node container: {str(e)}"
                 )
 
-        # Update node status
+        
         node.health_status = "failed"
         data.session.commit()
 
@@ -366,25 +365,25 @@ def send_heartbeats(app):
     with app.app_context():
         while True:
             try:
-                # Begin a fresh transaction
+                
                 data.session.begin()
 
-                # Check nodes that haven't sent heartbeats
+                
                 current_time = datetime.now(timezone.utc)
 
-                # Get all nodes that need monitoring
+                
                 monitored_nodes = Node.query.filter(
                     Node.health_status.in_(
                         ["healthy", "recovering", "failed", "initializing"]
                     ),
                 ).all()
 
-                # Track which nodes were updated
+                
                 updated_nodes = []
 
                 for node in monitored_nodes:
                     try:
-                        # Verify node still exists (may have been deleted)
+                        
                         check_node = Node.query.get(node.id)
                         if not check_node:
                             logger.debug(
@@ -392,18 +391,18 @@ def send_heartbeats(app):
                             )
                             continue
 
-                        # Skip if no last heartbeat (new node)
+                        
                         if not node.last_heartbeat:
                             continue
 
-                        # Get interval since last heartbeat
+                        
                         last_heartbeat = node.last_heartbeat
                         if last_heartbeat.tzinfo is None:
                             last_heartbeat = last_heartbeat.replace(tzinfo=timezone.utc)
 
                         interval = (current_time - last_heartbeat).total_seconds()
 
-                        # Process heartbeat interval
+                        
                         if (
                             node.health_status == "healthy"
                             and interval > node.max_heartbeat_interval
@@ -434,14 +433,14 @@ def send_heartbeats(app):
                             f"[HEARTBEAT] Error processing node {node.name}: {str(e)}"
                         )
 
-                # Commit updates if any were made
+                
                 if updated_nodes:
                     data.session.commit()
                     logger.info(
                         f"[HEARTBEAT] Updated status for nodes: {updated_nodes}"
                     )
                 else:
-                    # No updates, just roll back the transaction
+                    
                     data.session.rollback()
 
             except Exception as e:
@@ -451,7 +450,7 @@ def send_heartbeats(app):
                 except:
                     pass
 
-            # Sleep until next check
+            
             time.sleep(HEARTBEAT_INTERVAL / 2)
 
 

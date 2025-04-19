@@ -10,21 +10,21 @@ import logging
 import signal
 import sys
 
-# Configure logging with proper formatting for better readability
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# Create a file handler to save logs
+
 file_handler = logging.FileHandler("kube9.log")
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(
     logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )
 
-# Add file handler to root logger
+
 logging.getLogger("").addHandler(file_handler)
 
 app = Flask(__name__)
@@ -62,16 +62,16 @@ def cleanup_initializing_nodes():
     """Clean up nodes that are stuck in initializing state"""
     with app.app_context():
         try:
-            # Find nodes that are initializing
+            
             nodes = Node.query.filter_by(health_status="initializing").all()
 
             for node in nodes:
-                # If node has no heartbeats after 5 minutes, it's probably dead
+                
                 if node.last_heartbeat is None:
                     app.logger.warning(
                         f"Removing node {node.name} stuck in initializing state"
                     )
-                    # Try to clean up container
+                    
                     if node.docker_container_id:
                         try:
                             from services.docker_service import DockerService
@@ -82,7 +82,7 @@ def cleanup_initializing_nodes():
                         except Exception as e:
                             app.logger.warning(f"Error cleaning up container: {str(e)}")
 
-                    # Remove node from database
+                    
                     data.session.delete(node)
 
             data.session.commit()

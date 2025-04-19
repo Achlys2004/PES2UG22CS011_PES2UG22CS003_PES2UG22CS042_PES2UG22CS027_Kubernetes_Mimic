@@ -9,11 +9,11 @@ import ipaddress
 import logging
 from routes.pods import build_pod_spec
 
-# Standardized timing intervals
-HEARTBEAT_INTERVAL = 60  # seconds
-MAX_HEARTBEAT_INTERVAL = 120  # seconds
-RECOVERY_INTERVAL = 62  # seconds
-RESCHEDULER_INTERVAL = 62  # seconds
+
+HEARTBEAT_INTERVAL = 60  
+MAX_HEARTBEAT_INTERVAL = 120  
+RECOVERY_INTERVAL = 62  
+RESCHEDULER_INTERVAL = 62  
 
 
 class DockerMonitor:
@@ -26,7 +26,7 @@ class DockerMonitor:
         self.STARTUP_GRACE_PERIOD = 30
         self.need_rescheduling = False
 
-        # Initialize threads
+       
         self.container_thread = None
         self.health_thread = None
         self.recovery_thread = None
@@ -60,25 +60,25 @@ class DockerMonitor:
         if not self.running:
             self.running = True
 
-            # Start container monitor thread
+            
             self.container_thread = threading.Thread(target=self.monitor_containers)
             self.container_thread.daemon = True
             self.container_thread.start()
             self.logger.info("Container monitor started")
 
-            # Start node health monitor thread
+            
             self.health_thread = threading.Thread(target=self.monitor_node_health)
             self.health_thread.daemon = True
             self.health_thread.start()
             self.logger.info("Node health monitor started")
 
-            # Start node recovery thread
+            
             self.recovery_thread = threading.Thread(target=self.attempt_node_recovery)
             self.recovery_thread.daemon = True
             self.recovery_thread.start()
             self.logger.info("Node recovery service started")
 
-            # Start pod rescheduling thread
+            
             self.reschedule_thread = threading.Thread(target=self.reschedule_pods)
             self.reschedule_thread.daemon = True
             self.reschedule_thread.start()
@@ -108,10 +108,10 @@ class DockerMonitor:
 
             while self.running:
                 try:
-                    # Create a new session for each check to avoid transaction issues
+                    
                     data.session.begin()
 
-                    # First check node containers
+                    
                     nodes = Node.query.filter(
                         Node.docker_container_id != None,
                         Node.health_status != "permanently_failed",
@@ -119,7 +119,7 @@ class DockerMonitor:
 
                     for node in nodes:
                         try:
-                            # Always verify node still exists before processing
+                            
                             check_node = Node.query.get(node.id)
                             if check_node is None:
                                 self.logger.debug(
@@ -131,7 +131,7 @@ class DockerMonitor:
                                 node.docker_container_id
                             )
 
-                            # Process container status
+                            
                             if container_status == "unknown":
                                 if node.health_status == "healthy":
                                     self.logger.warning(
@@ -157,14 +157,14 @@ class DockerMonitor:
                                 f"[MONITOR] Error checking node container: {str(e)}"
                             )
 
-                    # Commit all changes in a single transaction
+                    
                     data.session.commit()
 
                 except Exception as e:
                     self.logger.error(f"[MONITOR] Error in container monitor: {str(e)}")
                     data.session.rollback()
 
-                # Brief pause to avoid excessive database querying
+                
                 time.sleep(60)
 
     def monitor_node_health(self):
@@ -172,10 +172,10 @@ class DockerMonitor:
         with self.app.app_context():
             while self.running:
                 try:
-                    # Ensure we're working with fresh data
+                    
                     data.session.expire_all()
 
-                    # Skip during startup grace period
+                    
                     current_time = datetime.now(timezone.utc)
                     if (
                         current_time - self.startup_time
@@ -183,12 +183,12 @@ class DockerMonitor:
                         time.sleep(5)
                         continue
 
-                    # Get all nodes
+                    
                     nodes = Node.query.all()
 
                     for node in nodes:
                         try:
-                            # Verify node still exists in database (in case it was deleted)
+                            
                             check_node = Node.query.get(node.id)
                             if check_node is None:
                                 self.logger.debug(
@@ -196,7 +196,7 @@ class DockerMonitor:
                                 )
                                 continue
 
-                            # Check if node is permanently failed and trigger rescheduling if needed
+                            
                             if (
                                 node.health_status == "permanently_failed"
                                 and len(node.pod_ids) > 0
@@ -207,7 +207,7 @@ class DockerMonitor:
                                 self.need_rescheduling = True
                                 continue
 
-                            # Skip early if no heartbeat data
+                            
                             if node.last_heartbeat is None:
                                 continue
 
@@ -219,7 +219,7 @@ class DockerMonitor:
 
                             interval = (current_time - last_heartbeat).total_seconds()
 
-                            # Check heartbeat interval
+                            
                             if (
                                 interval > node.max_heartbeat_interval
                                 and node.health_status == "healthy"
@@ -229,7 +229,7 @@ class DockerMonitor:
                                 )
                                 node.health_status = "failed"
 
-                                # Increment recovery attempts instead of resetting to 1
+                                
                                 if (
                                     node.recovery_attempts is None
                                     or node.recovery_attempts == 0
@@ -258,13 +258,13 @@ class DockerMonitor:
 
             while self.running:
                 try:
-                    # Make sure we're not in a transaction
+                    
                     data.session.rollback()
 
-                    # Immediately get fresh data on each loop
+                    
                     data.session.expire_all()
 
-                    # Find failed nodes that haven't exceeded max recovery attempts
+                    
                     failed_nodes = Node.query.filter(
                         Node.health_status == "failed",
                         Node.recovery_attempts < Node.max_recovery_attempts,
@@ -272,22 +272,22 @@ class DockerMonitor:
                     ).all()
 
                     if not failed_nodes:
-                        time.sleep(10)  # Check more frequently (was RECOVERY_INTERVAL)
+                        time.sleep(10)  
                         continue
 
                     self.logger.info(
                         f"[RECOVERY] Found {len(failed_nodes)} failed nodes to attempt recovery"
                     )
 
-                    # Process each node in its own transaction
+                    
                     for node in failed_nodes:
                         try:
-                            # Ensure we're not in a transaction
+                            
                             data.session.rollback()
-                            # Now start a new transaction
+                            
                             data.session.begin()
 
-                            # Verify node still exists and is still failed
+                            
                             check_node = Node.query.get(node.id)
                             if not check_node:
                                 self.logger.info(
@@ -296,7 +296,7 @@ class DockerMonitor:
                                 data.session.rollback()
                                 continue
 
-                            # Check if node has recovered on its own (e.g., manual intervention)
+                           
                             if check_node.health_status != "failed":
                                 self.logger.info(
                                     f"[RECOVERY] Node {node.name} (ID: {node.id}) is no longer failed (now: {check_node.health_status}), skipping recovery"
@@ -304,18 +304,18 @@ class DockerMonitor:
                                 data.session.rollback()
                                 continue
 
-                            # Display recovery attempt number starting from 1 instead of 0
+                            
                             self.logger.info(
                                 f"[RECOVERY] Attempting to recover node {node.name} (ID: {node.id}) - "
                                 f"Attempt {node.recovery_attempts}/{node.max_recovery_attempts}"
                             )
 
-                            # Check container status first before attempting recovery
+                            
                             container_status = self.docker_service.get_container_info(
                                 node.docker_container_id
                             )
 
-                            # If container is actually running, maybe the node just needs time to send heartbeat
+                            
                             if container_status == "running":
                                 self.logger.info(
                                     f"[RECOVERY] Node {node.name} container is actually running, marking as recovering and waiting for heartbeat"
@@ -324,7 +324,7 @@ class DockerMonitor:
                                 data.session.commit()
                                 continue
 
-                            # Check if container exists
+                            
                             container_exists = self.docker_service.container_exists(
                                 node.docker_container_id
                             )
@@ -339,13 +339,13 @@ class DockerMonitor:
                                         f"[RECOVERY] Node {node.name} marked as permanently failed after {node.recovery_attempts} attempts"
                                     )
                                     node.health_status = "permanently_failed"
-                                    # Only set need_rescheduling when marked permanently failed
+                                    
                                     self.need_rescheduling = True
 
                                 data.session.commit()
                                 continue
 
-                            # Try to restart the container
+                            
                             success = self.docker_service.start_container(
                                 node.docker_container_id
                             )
@@ -368,7 +368,7 @@ class DockerMonitor:
                                         f"[RECOVERY] Node {node.name} marked as permanently failed"
                                     )
                                     node.health_status = "permanently_failed"
-                                    # Only set need_rescheduling when marked permanently failed
+                                    
                                     self.need_rescheduling = True
 
                                 data.session.commit()
@@ -388,8 +388,8 @@ class DockerMonitor:
                     except:
                         pass
 
-                # Check more frequently for faster response
-                time.sleep(15)  # Was RECOVERY_INTERVAL (62 seconds)
+                
+                time.sleep(15)  
 
     def trigger_pod_rescheduling(self):
         """Directly trigger the pod rescheduling process"""
@@ -401,23 +401,23 @@ class DockerMonitor:
         with self.app.app_context():
             while self.running:
                 try:
-                    # If no rescheduling needed, sleep and continue
+                    
                     if not self.need_rescheduling:
                         time.sleep(5)
                         continue
 
-                    # Refresh database session and ensure no active transaction
+                    
                     data.session.rollback()
                     data.session.expire_all()
 
                     self.logger.info("[RESCHEDULE] Starting pod rescheduling process")
 
-                    # Only reschedule from permanently failed nodes (not temporarily failed)
+                    
                     failed_nodes = Node.query.filter(
                         Node.health_status == "permanently_failed"
                     ).all()
 
-                    # Check if any failed nodes still exist
+                    
                     if not failed_nodes:
                         self.logger.info(
                             "[RESCHEDULE] No permanently failed nodes found, clearing rescheduling flag"
@@ -426,9 +426,9 @@ class DockerMonitor:
                         time.sleep(RESCHEDULER_INTERVAL)
                         continue
 
-                    # Process each failed node
+                   
                     for failed_node in failed_nodes:
-                        # Get pods on the failed node
+                        
                         pods_to_reschedule = Pod.query.filter_by(
                             node_id=failed_node.id
                         ).all()
@@ -443,16 +443,16 @@ class DockerMonitor:
                             f"[RESCHEDULE] Found {len(pods_to_reschedule)} pods to reschedule from node {failed_node.name}"
                         )
 
-                        # Process each pod that needs rescheduling
+                        
                         for pod in pods_to_reschedule:
                             try:
-                                # Ensure any previous transaction is closed
+                                
                                 data.session.rollback()
 
-                                # Start a new transaction for each pod
+                                
                                 data.session.begin()
 
-                                # Verify pod still exists and needs rescheduling
+                                
                                 current_pod = Pod.query.get(pod.id)
                                 if not current_pod:
                                     self.logger.info(
@@ -461,7 +461,7 @@ class DockerMonitor:
                                     data.session.rollback()
                                     continue
 
-                                # Find eligible nodes with Best-Fit algorithm (same as initial scheduling)
+                                
                                 eligible_nodes = Node.query.filter(
                                     Node.cpu_cores_avail >= pod.cpu_cores_req,
                                     Node.health_status == "healthy",
@@ -470,13 +470,13 @@ class DockerMonitor:
                                     Node.container_runtime_status == "running",
                                 ).all()
 
-                                # Skip if no eligible node found
+                                
                                 if not eligible_nodes:
                                     self.logger.warning(
                                         f"[RESCHEDULE] No eligible nodes found for pod {pod.name} (ID: {pod.id}) requiring {pod.cpu_cores_req} CPU cores"
                                     )
 
-                                    # Since no eligible nodes are available, terminate the pod completely
+                                    
                                     self.logger.info(
                                         f"[RESCHEDULE] Terminating pod {pod.name} (ID: {pod.id}) due to lack of eligible nodes"
                                     )
@@ -487,16 +487,16 @@ class DockerMonitor:
                                                 self.logger.info(
                                                     f"[RESCHEDULE] Cleaning up container {container.name} for pod {pod.name}"
                                                 )
-                                                # If we had container IDs stored, we would stop them here
+                                                
                                         except Exception as container_error:
                                             self.logger.error(
                                                 f"[RESCHEDULE] Error cleaning up containers: {str(container_error)}"
                                             )
 
-                                        # Remove pod from failed node's pod list
+                                        
                                         failed_node.remove_pod(pod.id)
 
-                                        # Delete the pod from database (cascade will handle related entities)
+                                       
                                         data.session.delete(pod)
                                         data.session.commit()
 
@@ -511,7 +511,7 @@ class DockerMonitor:
 
                                     continue
 
-                                # Best-Fit: Select node with minimum available resources
+                                
                                 target_node = min(
                                     eligible_nodes, key=lambda n: n.cpu_cores_avail
                                 )
@@ -520,17 +520,17 @@ class DockerMonitor:
                                     f"[RESCHEDULE] Selected node {target_node.name} for pod {pod.name} (ID: {pod.id})"
                                 )
 
-                                # Generate new IP address for the pod
+                                
                                 base_ip = "10.244.0.0"
                                 network = ipaddress.ip_network(f"{base_ip}/16")
                                 random_ip = str(random.choice(list(network.hosts())))
 
-                                # Create pod specification to send to target node
+                                
                                 try:
                                     pod_spec = build_pod_spec(pod)
                                     pod_spec["ip_address"] = random_ip
 
-                                    # Send request to target node to run pod as processes
+                                    
                                     if target_node.node_ip:
                                         response = requests.post(
                                             f"http://{target_node.node_ip}:{target_node.node_port}/run_pod",
@@ -561,21 +561,20 @@ class DockerMonitor:
                                     data.session.rollback()
                                     continue
 
-                                # Update node assignments
-                                # Remove from failed node's pod list
+                               
                                 failed_node.remove_pod(pod.id)
 
-                                # Add to target node's pod list
+                                
                                 target_node.add_pod(pod.id)
 
-                                # Update resource allocations
+                                
                                 target_node.cpu_cores_avail -= pod.cpu_cores_req
 
-                                # Update pod's node assignment
+                                
                                 pod.node_id = target_node.id
                                 pod.health_status = "running"
 
-                                # Notify the target node about the new pod if possible
+                                
                                 try:
                                     if target_node.node_ip:
                                         requests.post(
@@ -591,7 +590,7 @@ class DockerMonitor:
                                         f"[RESCHEDULE] Failed to notify target node: {str(e)}"
                                     )
 
-                                # Commit changes for this pod
+                                
                                 data.session.commit()
 
                                 self.logger.info(
@@ -605,7 +604,7 @@ class DockerMonitor:
                                 )
                                 data.session.rollback()
 
-                    # Clear rescheduling flag once all failed nodes are processed
+                    
                     self.need_rescheduling = False
 
                 except Exception as e:

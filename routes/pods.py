@@ -20,7 +20,7 @@ def build_pod_spec(pod):
         "environment": {}
     }
     
-    # Add container specifications
+    
     for container in pod.containers:
         container_spec = {
             "name": container.name,
@@ -32,7 +32,7 @@ def build_pod_spec(pod):
         }
         pod_spec["containers"].append(container_spec)
     
-    # Add environment variables from config
+    
     for config in pod.config_items:
         if config.config_type == "env":
             pod_spec["environment"][config.key] = config.value
@@ -51,7 +51,7 @@ def add_pod():
         volumes_data = req_data.get("volumes", [])
         config_data = req_data.get("config", [])
 
-        # Validations
+        
         if not name:
             return jsonify({"error": "Name is missing or incorrect"}), 400
         elif not cpu_cores_req:
@@ -59,7 +59,7 @@ def add_pod():
         elif not containers_data:
             return jsonify({"error": "At least one container is required"}), 400
 
-        # Find eligible nodes using Best-Fit algorithm
+        
         eligible_nodes = Node.query.filter(
             Node.cpu_cores_avail >= cpu_cores_req,
             Node.health_status == "healthy",
@@ -70,7 +70,7 @@ def add_pod():
 
         node = None
         if eligible_nodes:
-            # Best-Fit: Select node with minimum available resources
+            
             node = min(eligible_nodes, key=lambda n: n.cpu_cores_avail)
 
         if not node:
@@ -83,15 +83,15 @@ def add_pod():
                 400,
             )
 
-        # Generate IP address for the pod
+        
         base_ip = "10.244.0.0"
         network = ipaddress.ip_network(f"{base_ip}/16")
         random_ip = str(random.choice(list(network.hosts())))
 
-        # Determine pod type
+        
         pod_type = "multi-container" if len(containers_data) > 1 else "single-container"
 
-        # Create the pod in database
+        
         new_pod = Pod(
             name=name,
             cpu_cores_req=cpu_cores_req,
@@ -103,9 +103,9 @@ def add_pod():
             has_config=len(config_data) > 0,
         )
         data.session.add(new_pod)
-        data.session.flush()  # Get the pod ID without committing
+        data.session.flush()  
 
-        # Create containers
+        
         for container_data in containers_data:
             container = Container(
                 name=container_data.get(
@@ -121,7 +121,7 @@ def add_pod():
             )
             data.session.add(container)
 
-        # Create volumes
+        
         for volume_data in volumes_data:
             volume = Volume(
                 name=volume_data.get(
@@ -134,7 +134,7 @@ def add_pod():
             )
             data.session.add(volume)
 
-        # Create config items
+        
         for config_item in config_data:
             config = ConfigItem(
                 name=config_item.get(
@@ -147,19 +147,19 @@ def add_pod():
             )
             data.session.add(config)
 
-        # Reduce available CPU on the node
+        
         node.cpu_cores_avail -= cpu_cores_req
 
-        # Set initial status
+        
         new_pod.health_status = "running"
         for container in new_pod.containers:
             container.status = "running"
 
-        # Create pod specification to send to the node
+        
         try:
             pod_spec = build_pod_spec(new_pod)
             
-            # Send request to the node to run the pod as processes
+            
             if node.node_ip:
                 response = requests.post(
                     f"http://{node.node_ip}:{node.node_port}/run_pod",
@@ -173,7 +173,7 @@ def add_pod():
                 if response.status_code != 200:
                     raise Exception(f"Node responded with status {response.status_code}: {response.text}")
                 
-                # Update container status based on node response
+                
                 pod_status = response.json().get("pod_status", {})
                 for container_status in pod_status.get("containers", []):
                     for container in new_pod.containers:
@@ -182,24 +182,24 @@ def add_pod():
             else:
                 raise Exception("Node IP address not available")
             
-            # Add pod ID to node's pod list
+            
             node.add_pod(new_pod.id)
             
-            # Commit all changes
+            
             data.session.commit()
 
         except Exception as e:
-            # Handle failures
+    
             current_app.logger.error(f"Error creating pod processes: {str(e)}")
             
-            # Mark pod as failed
+            
             new_pod.health_status = "failed"
             data.session.commit()
             
-            # Return error to client
+            
             return jsonify({"error": f"Error creating pod processes: {str(e)}"}), 500
 
-        # Return success response
+        
         return (
             jsonify(
                 {
@@ -382,7 +382,7 @@ def delete_pod(pod_id):
         if not node:
             return jsonify({"error": "Associated node not found"}), 404
 
-        # Notify the node to terminate the pod's processes
+        
         try:
             if node.node_ip:
                 response = requests.delete(
@@ -399,13 +399,13 @@ def delete_pod(pod_id):
                 f"Failed to notify node about pod deletion: {str(e)}"
             )
 
-        # Return CPU resources to the node
+        
         node.cpu_cores_avail += pod.cpu_cores_req
 
-        # Remove pod ID from node's pod list
+        
         node.remove_pod(pod_id)
 
-        # Delete the pod from database
+        
         data.session.delete(pod)
         data.session.commit()
 
@@ -426,7 +426,7 @@ def check_pod_health(pod_id):
     if not node:
         return jsonify({"error": "Associated node not found"}), 404
     
-    # Get health status directly from node
+    
     try:
         if node.node_ip:
             response = requests.get(
@@ -437,7 +437,7 @@ def check_pod_health(pod_id):
             if response.status_code == 200:
                 node_pod_status = response.json()
                 
-                # Update pod status in database if needed
+                
                 if pod.health_status != node_pod_status["status"]:
                     pod.health_status = node_pod_status["status"]
                     data.session.commit()
