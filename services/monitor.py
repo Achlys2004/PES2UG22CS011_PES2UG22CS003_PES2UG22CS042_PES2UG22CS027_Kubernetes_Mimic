@@ -139,7 +139,7 @@ class DockerMonitor:
                                         f"[MONITOR] Node {node.name} (ID: {node.id}) container not found, marking as failed"
                                     )
                                     node.health_status = "failed"
-                                    node.recovery_attempts += 1
+                                    # node.recovery_attempts += 1
                                     self.need_rescheduling = True
 
                             elif (
@@ -150,7 +150,7 @@ class DockerMonitor:
                                     f"[MONITOR] Node {node.name} (ID: {node.id}) container is {container_status}, marking as failed"
                                 )
                                 node.health_status = "failed"
-                                node.recovery_attempts += 1
+                                # node.recovery_attempts += 1
                                 self.need_rescheduling = True
 
                         except Exception as e:
@@ -222,7 +222,7 @@ class DockerMonitor:
                                     f"Node {node.name} missed heartbeat for {interval:.1f}s, marking as failed"
                                 )
                                 node.health_status = "failed"
-                                node.recovery_attempts += 1
+                                # node.recovery_attempts += 1
                                 self.need_rescheduling = True
 
                                 if node.recovery_attempts >= node.max_recovery_attempts:

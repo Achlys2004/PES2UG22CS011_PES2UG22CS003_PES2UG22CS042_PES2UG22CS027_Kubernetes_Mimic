@@ -340,7 +340,6 @@ def delete_node(node_id):
     try:
         node = Node.query.get_or_404(node_id)
 
-        # Only check for pods if the node is not permanently failed
         if node.health_status != "permanently_failed":
             pod_count = len(node.pod_ids)
             if pod_count > 0:
@@ -353,15 +352,14 @@ def delete_node(node_id):
                     400,
                 )
 
-        # Remove the Docker container if it exists
         if node.docker_container_id:
             try:
-                docker_service.stop_node_container(node.docker_container_id)
-                docker_service.remove_node_container(node.docker_container_id)
+                docker_service.stop_container(node.docker_container_id, is_node=True)
+                time.sleep(1)
+                docker_service.remove_container(node.docker_container_id, is_node=True)
             except Exception as e:
                 current_app.logger.warning(f"Failed to remove container: {str(e)}")
 
-        # Delete the node from the database
         data.session.delete(node)
         data.session.commit()
 
@@ -464,7 +462,7 @@ def force_cleanup_node(node_id):
                 docker_service.stop_container(
                     node.docker_container_id, force=True, is_node=True
                 )
-                time.sleep(2) 
+                time.sleep(2)
 
                 docker_service.remove_container(
                     node.docker_container_id, force=True, is_node=True
@@ -550,7 +548,7 @@ def send_heartbeats(app):
                                 f"Missing heartbeat for {interval:.1f}s (max: {node.max_heartbeat_interval}s)"
                             )
                             node.health_status = "failed"
-                            node.recovery_attempts += 1
+                            # node.recovery_attempts += 1
                             updated_nodes.append(node.id)
 
                         elif node.health_status == "recovering":
