@@ -59,17 +59,16 @@ def test_db():
 
 
 def cleanup_initializing_nodes():
-    """Clean up nodes that are stuck in initializing state"""
     with app.app_context():
         try:
 
-            nodes = Node.query.filter_by(health_status="initializing").all()
+            nodes = Node.query.filter_by(health_status="permanently_failed").all()
 
             for node in nodes:
 
                 if node.last_heartbeat is None:
                     app.logger.warning(
-                        f"Removing node {node.name} stuck in initializing state"
+                        f"Removing node {node.name} that are permanently failed for a fresh start"
                     )
 
                     if node.docker_container_id:
@@ -89,9 +88,9 @@ def cleanup_initializing_nodes():
                     data.session.delete(node)
 
             data.session.commit()
-            app.logger.info("Initializing nodes cleanup complete")
+            app.logger.info("stale nodes cleanup complete")
         except Exception as e:
-            app.logger.error(f"Error cleaning up initializing nodes: {str(e)}")
+            app.logger.error(f"Error cleaning up stale nodes: {str(e)}")
             data.session.rollback()
 
 

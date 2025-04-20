@@ -223,8 +223,8 @@ class DockerMonitor:
                                 )
                                 node.health_status = "failed"
                                 node.recovery_attempts += 1
+                                self.need_rescheduling = True
 
-                                # Check if max attempts reached and mark as permanently failed
                                 if node.recovery_attempts >= node.max_recovery_attempts:
                                     self.logger.error(
                                         f"Node {node.name} marked as permanently failed after {node.recovery_attempts} attempts"
@@ -232,7 +232,6 @@ class DockerMonitor:
                                     node.health_status = "permanently_failed"
                                     self.need_rescheduling = True
 
-                                    # Add this block to stop the container if it exists (even though we just checked it doesn't)
                                     if node.docker_container_id:
                                         try:
                                             self.logger.info(
@@ -266,7 +265,9 @@ class DockerMonitor:
 
             while self.running:
                 try:
-                    # First, handle nodes that have reached max recovery attempts but are still 'failed'
+                    data.session.rollback()
+                    data.session.expire_all()
+
                     max_attempts_reached_nodes = Node.query.filter(
                         Node.health_status == "failed",
                         Node.recovery_attempts >= Node.max_recovery_attempts,
@@ -279,17 +280,14 @@ class DockerMonitor:
                         node.health_status = "permanently_failed"
                         self.need_rescheduling = True
 
-                        # Make sure to forcefully stop the container when marking as permanently failed
                         if node.docker_container_id:
                             try:
                                 self.logger.info(
                                     f"[RECOVERY] Stopping container for permanently failed node {node.name}"
                                 )
-                                # Use force=True to ensure it stops
                                 self.docker_service.stop_container(
                                     node.docker_container_id, force=True
                                 )
-                                # Don't remove the container yet, as we might need info from it for debugging
                             except Exception as e:
                                 self.logger.error(
                                     f"[RECOVERY] Failed to stop container for node {node.name}: {str(e)}"
@@ -298,7 +296,6 @@ class DockerMonitor:
                     if max_attempts_reached_nodes:
                         data.session.commit()
 
-                    # Continue with regular recovery for nodes under max attempts
                     failed_nodes = Node.query.filter(
                         Node.health_status == "failed",
                         Node.recovery_attempts < Node.max_recovery_attempts,
@@ -346,7 +343,6 @@ class DockerMonitor:
                                 node.docker_container_id
                             )
 
-                            # Log the actual container status to help with debugging
                             self.logger.info(
                                 f"[RECOVERY] Node {node.name} container status is: {container_status}"
                             )
@@ -362,13 +358,10 @@ class DockerMonitor:
                                 container_status == "exited"
                                 or container_status == "stopped"
                             ):
-                                # Explicit handling for exited/stopped containers
                                 self.logger.info(
                                     f"[RECOVERY] Node {node.name} container is {container_status}, attempting to restart"
                                 )
-                                # Continue to restart logic below
                             else:
-                                # Handle other states like "paused", "restarting", etc.
                                 self.logger.info(
                                     f"[RECOVERY] Node {node.name} container is in state: {container_status}"
                                 )
@@ -405,7 +398,6 @@ class DockerMonitor:
                                 data.session.commit()
                                 continue
                             else:
-                                # Container exists but might be stopped/exited
                                 success = self.docker_service.start_container(
                                     node.docker_container_id
                                 )
@@ -465,7 +457,6 @@ class DockerMonitor:
                 time.sleep(15)
 
     def trigger_pod_rescheduling(self):
-        """Directly trigger the pod rescheduling process"""
         self.need_rescheduling = True
         self.logger.info("[RESCHEDULE] Pod rescheduling triggered manually")
 
@@ -655,26 +646,21 @@ class DockerMonitor:
                                 )
                                 data.session.rollback()
 
-                    # After successfully rescheduling pods, clean up the permanently failed node containers
                     for failed_node in failed_nodes:
-                        # Only after all pods have been rescheduled, we can remove the container
                         if failed_node.docker_container_id:
                             try:
                                 self.logger.info(
                                     f"[RESCHEDULE] Cleaning up container for permanently failed node {failed_node.name}"
                                 )
-                                # Use is_node=True instead of force=True
                                 self.docker_service.stop_container(
                                     failed_node.docker_container_id, is_node=True
                                 )
-                                # Wait a moment before removing to ensure it's stopped
                                 time.sleep(2)
                                 self.docker_service.remove_container(
                                     failed_node.docker_container_id,
                                     force=True,
                                     is_node=True,
                                 )
-                                # Mark that the container has been cleaned up
                                 failed_node.docker_container_id = None
                                 data.session.commit()
                             except Exception as e:
@@ -693,13 +679,12 @@ class DockerMonitor:
                 time.sleep(RESCHEDULER_INTERVAL)
 
     def reap_stale_containers(self):
-        """Periodically clean up containers from permanently failed nodes that weren't properly terminated"""
+        """Periodically clean up containers from permanently failed nodes that weren't properly deleted"""
         with self.app.app_context():
             self.logger.info("[REAP] Container reaper service started")
 
             while self.running:
                 try:
-                    # Find permanently failed nodes that still have container IDs
                     stale_nodes = Node.query.filter(
                         Node.health_status == "permanently_failed",
                         Node.docker_container_id != None,
@@ -711,19 +696,16 @@ class DockerMonitor:
                         )
 
                         try:
-                            # First check if container still exists
                             if self.docker_service.container_exists(
                                 node.docker_container_id
                             ):
                                 self.logger.info(
                                     f"[REAP] Stopping container for node {node.name}"
                                 )
-                                # Use force=True to ensure it stops
                                 self.docker_service.stop_container(
                                     node.docker_container_id, force=True, is_node=True
                                 )
 
-                                # Wait a moment before removing
                                 time.sleep(2)
 
                                 self.logger.info(
@@ -733,7 +715,6 @@ class DockerMonitor:
                                     node.docker_container_id, force=True, is_node=True
                                 )
 
-                            # Update the node record - ALWAYS clear the container ID
                             node.docker_container_id = None
                             data.session.commit()
                             self.logger.info(
@@ -750,5 +731,4 @@ class DockerMonitor:
                     self.logger.error(f"[REAP] Error in container reaper: {str(e)}")
                     data.session.rollback()
 
-                # Run more frequently - every 15 seconds
                 time.sleep(15)

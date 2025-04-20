@@ -418,7 +418,6 @@ def deregister_node(node_id):
             f"[DEREGISTER] Node {node.name} (ID: {node_id}) is deregistering"
         )
 
-        # If the node has pods, mark for rescheduling
         if node.pod_ids:
             monitor = current_app.config.get("DOCKER_MONITOR")
             if monitor:
@@ -427,7 +426,6 @@ def deregister_node(node_id):
                     f"[DEREGISTER] Triggering pod rescheduler for deregistering node {node.name}"
                 )
 
-        # Mark as permanently failed to prevent further recovery attempts
         node.health_status = "permanently_failed"
         data.session.commit()
 
@@ -463,18 +461,15 @@ def force_cleanup_node(node_id):
                     f"[CLEANUP] Forcing cleanup of container for node {node.name}"
                 )
 
-                # Stop the container
                 docker_service.stop_container(
                     node.docker_container_id, force=True, is_node=True
                 )
-                time.sleep(2)  # Give it time to stop
+                time.sleep(2) 
 
-                # Remove the container
                 docker_service.remove_container(
                     node.docker_container_id, force=True, is_node=True
                 )
 
-                # Update node record
                 node.docker_container_id = None
                 data.session.commit()
 
@@ -508,7 +503,6 @@ def force_cleanup_node(node_id):
 
 
 def send_heartbeats(app):
-    """Background task to monitor node heartbeats"""
     logger = app.logger
     logger.info("[HEARTBEAT] Node heartbeat monitor starting")
 
@@ -597,7 +591,6 @@ def send_heartbeats(app):
 
 
 def init_heartbeat_thread(app):
-    """Start the heartbeat thread"""
     heartbeat_thread = threading.Thread(
         target=send_heartbeats, args=(app,), daemon=True
     )
@@ -607,5 +600,4 @@ def init_heartbeat_thread(app):
 
 
 def init_routes(app):
-    """Initialize routes and start heartbeat thread"""
     init_heartbeat_thread(app)

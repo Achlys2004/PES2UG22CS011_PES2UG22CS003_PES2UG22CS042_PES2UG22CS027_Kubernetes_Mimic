@@ -4,7 +4,6 @@ import ipaddress
 import requests
 from models import data, Pod, Node, Container, Volume, ConfigItem
 from services.docker_service import DockerService
-import uuid
 
 pods_bp = Blueprint("pods", __name__)
 docker_service = DockerService()
@@ -40,7 +39,6 @@ def build_pod_spec(pod):
 
 @pods_bp.route("/", methods=["POST"])
 def add_pod():
-    """Create a new pod and schedule it on a node"""
     try:
         req_data = request.get_json()
         name = req_data.get("name")
@@ -205,7 +203,6 @@ def add_pod():
 
 @pods_bp.route("/", methods=["GET"])
 def list_pods():
-    """List all pods"""
     pods = Pod.query.all()
     result = []
 
@@ -278,7 +275,6 @@ def list_pods():
 
 @pods_bp.route("/<int:pod_id>", methods=["GET"])
 def get_pod(pod_id):
-    """Get details of a specific pod"""
     pod = Pod.query.get_or_404(pod_id)
     node = Node.query.get(pod.node_id)
 
@@ -353,7 +349,6 @@ def get_pod(pod_id):
 
 @pods_bp.route("/<int:pod_id>", methods=["DELETE"])
 def delete_pod(pod_id):
-    """Delete a pod"""
     try:
         pod = Pod.query.get_or_404(pod_id)
         node = Node.query.get(pod.node_id)
@@ -393,7 +388,6 @@ def delete_pod(pod_id):
 
 @pods_bp.route("/<int:pod_id>/health", methods=["GET"])
 def check_pod_health(pod_id):
-    """Check the health of a pod by querying the hosting node"""
     pod = Pod.query.get_or_404(pod_id)
     node = Node.query.get(pod.node_id)
 
