@@ -136,20 +136,12 @@ class DockerService:
     def stop_container(
         self, container_id: str, force: bool = False, is_node: bool = False
     ) -> bool:
-        """Stop a Docker container
-
-        Args:
-            container_id: Container ID
-            force: Force stop even if already stopping
-            is_node: Whether this is a node container
-        """
         if not container_id:
             return False
 
         try:
             container = self.client.containers.get(container_id)
 
-            # Check if container is already stopped
             if container.status == "exited":
                 self.logger.info(f"Container {container_id} is already stopped")
                 return True
@@ -169,13 +161,7 @@ class DockerService:
     def remove_container(
         self, container_id: str, force: bool = False, is_node: bool = False
     ) -> bool:
-        """Remove a Docker container
 
-        Args:
-            container_id: Container ID
-            force: Force removal even if running
-            is_node: Whether this is a node container
-        """
         if not container_id:
             return False
 
@@ -194,12 +180,7 @@ class DockerService:
             return False
 
     def create_network(self, name: str, ensure_exists: bool = False) -> str:
-        """Create or ensure a Docker network exists
 
-        Args:
-            name: Network name
-            ensure_exists: If True, won't remove existing network
-        """
         try:
 
             existing_networks = self.client.networks.list(names=[name])
@@ -286,12 +267,7 @@ class DockerService:
     def get_container_info(
         self, container_id: str, detailed: bool = False
     ) -> Union[str, dict]:
-        """Get container status or detailed information
 
-        Args:
-            container_id: Docker container ID
-            detailed: If True, returns full info dict, otherwise just status string
-        """
         if not container_id:
             return "unknown" if not detailed else {"status": "unknown"}
 

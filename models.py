@@ -27,10 +27,10 @@ class Node(data.Model):
     node_agent_status = data.Column(data.String(20), default="running")
 
     
-    api_server_status = data.Column(data.String(20), nullable=True)
-    scheduler_status = data.Column(data.String(20), nullable=True)
-    controller_status = data.Column(data.String(20), nullable=True)
-    etcd_status = data.Column(data.String(20), nullable=True)
+    api_server_status = data.Column(data.String(20), default="running")
+    scheduler_status = data.Column(data.String(20), default="running")
+    controller_status = data.Column(data.String(20), default="running")
+    etcd_status = data.Column(data.String(20), default="running")
 
    
     last_heartbeat = data.Column(data.DateTime)

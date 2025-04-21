@@ -210,9 +210,10 @@ def format_status_badge(status):
 
 def format_component_badge(status):
     """Format component status with colored badge"""
+    if status is None:
+        status = "unknown"
     color = "#28a745" if status.lower() == "running" else "#dc3545"
     return f'<span class="component-badge" style="background-color: {color}; color: white;">{status}</span>'
-
 
 def format_datetime(dt_str):
     """Format datetime string to readable format"""

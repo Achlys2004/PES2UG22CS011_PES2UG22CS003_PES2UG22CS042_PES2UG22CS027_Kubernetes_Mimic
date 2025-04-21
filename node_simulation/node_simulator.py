@@ -402,47 +402,40 @@ def send_heartbeat():
 
         data = response.json()
 
-        # Check if we need to stop heartbeating
         if data.get("should_stop_heartbeat", False):
             logger.warning(
                 f"API server requests node to stop sending heartbeats. Status: {data.get('node_status')}"
             )
 
-            # If we should terminate, exit the process
             if data.get("should_terminate", False):
                 logger.warning(
                     "API server requests node to terminate. Shutting down..."
                 )
-                # Try to deregister
                 try:
                     requests.post(f"{API_SERVER}/nodes/{NODE_ID}/deregister", timeout=3)
                 except:
                     pass
-                # Exit the process
                 import os
 
                 os._exit(0)
 
             return jsonify({"message": "Stopping heartbeats as requested"}), 200
 
-        # Continue normal processing...
     except Exception as e:
         logger.error(f"Error sending heartbeat: {str(e)}")
         return jsonify({"error": "Failed to send heartbeat"}), 500
 
 
 def graceful_shutdown(sig, frame):
-    """Handle graceful shutdown"""
     logger.info("Shutting down node simulator...")
     sys.exit(0)
 
 
-# Add a signal handler for graceful shutdown
+# Signal handler for graceful shutdown
 def signal_handler(sig, frame):
     logger.info("Received shutdown signal")
     if NODE_ID != "0":
         try:
-            # Attempt to deregister from the cluster
             requests.post(f"{API_SERVER}/nodes/{NODE_ID}/deregister", timeout=5)
             logger.info(f"Node {NODE_NAME} deregistered from cluster")
         except Exception as e:
@@ -452,7 +445,6 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-# Register the signal handler
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
@@ -463,7 +455,6 @@ if __name__ == "__main__":
     logger.info(f"API Server: {API_SERVER}")
     logger.info(f"Heartbeat interval: {HEARTBEAT_INTERVAL}s")
 
-    # Start the heartbeat thread
     heartbeat_thread = threading.Thread(target=send_heartbeat)
     heartbeat_thread.daemon = True
     heartbeat_thread.start()
