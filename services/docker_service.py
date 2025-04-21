@@ -146,7 +146,6 @@ class DockerService:
                 self.logger.info(f"Container {container_id} is already stopped")
                 return True
 
-            # Stop the container with a timeout
             timeout = 1 if force else 10
             container.stop(timeout=timeout)
 

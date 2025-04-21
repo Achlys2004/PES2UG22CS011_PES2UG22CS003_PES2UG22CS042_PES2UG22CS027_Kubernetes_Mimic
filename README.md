@@ -152,8 +152,6 @@ The Kube-9 dashboard provides a visual interface to manage and monitor your clus
 - **Health Monitoring**: Real-time health status with visual indicators
 - **Auto-refresh**: Configurable auto-refresh to keep data current
 
-![Dashboard Overview](https://placeholder-for-dashboard-screenshot.com/overview.png)
-
 ---
 
 ## Testing the Application
